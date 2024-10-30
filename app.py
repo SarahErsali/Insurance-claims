@@ -113,9 +113,24 @@ def update_upload(contents, filenames):
 
 
 
+#------------ Callback for cleaning uploaded files ------------------
 
 
 
+@app.callback(
+    Output('clean-status', 'children'),
+    Input('clean-data-button', 'n_clicks'),
+    prevent_initial_call=True
+)
+def clean_data(n_clicks):
+    global uploaded_data
+    if uploaded_data:
+        # Clean all uploaded datasets
+        uploaded_data = data.clean_uploaded_dataframes(uploaded_data)
+        return "Data cleaning is complete."
+    else:
+        return "No data available to clean. Please upload files first."
+    
 
 
 # #--------------- Callback for Model Predictions Plot----------------

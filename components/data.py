@@ -25,7 +25,55 @@ def load_uploaded_data(contents, filename, existing_dataframes):
     return existing_dataframes
 
 
-#---------------- Data Preparation --------------------------------------------------------------
+#---------------- Data Cleaning ------------------------------------------
+
+
+# Convert 'YYYY Qn' format into datetime
+def convert_quarter_to_date(quarter_str):
+    try:
+        year, quarter = quarter_str.split()
+        year = int(year)
+        quarter_mapping = {
+            'Q1': 1,  # January
+            'Q2': 4,  # April
+            'Q3': 7,  # July
+            'Q4': 10  # October
+        }
+        return pd.Timestamp(year=year, month=quarter_mapping[quarter], day=1)
+    except Exception as e:
+        return np.nan
+
+# Generalized Data Cleaning Function
+def clean_data(df):
+    # 1. Strip leading and trailing spaces from column names
+    df.columns = df.columns.str.strip()
+
+    # 2. Identify numeric columns and clean formatting issues
+    for col in df.select_dtypes(include=['object']).columns:
+        try:
+            # Remove spaces, commas, or any other formatting and convert to numeric
+            df[col] = pd.to_numeric(df[col].str.replace(' ', '').str.replace(',', ''), errors='coerce')
+        except Exception as e:
+            pass
+
+    # 3. Detect and convert 'quarter' columns to datetime
+    for col in df.columns:
+        if 'quarter' in col.lower() or 'date' in col.lower():
+            df[col] = df[col].apply(lambda x: convert_quarter_to_date(x) if isinstance(x, str) else x)
+
+    # 4. Impute missing values in numeric columns with the column mean
+    for col in df.select_dtypes(include=['float64', 'int64']).columns:
+        if df[col].isnull().any():
+            df[col].fillna(df[col].mean(), inplace=True)
+    
+    return df
+
+# Bulk cleaning function for all uploaded dataframes
+def clean_uploaded_dataframes(uploaded_data):
+    cleaned_data = {}
+    for name, df in uploaded_data.items():
+        cleaned_data[name] = clean_data(df)
+    return cleaned_data
 
 
 
