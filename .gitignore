@@ -1,0 +1,20 @@
+# Python-related files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+
+# VSCode settings
+.vscode/
+
+# Environment variables
+.env
+
+# Node.js-related files (if applicable)
+node_modules/
+
+.DS_Store
