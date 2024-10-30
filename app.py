@@ -108,6 +108,7 @@ def update_upload(contents, filenames):
             message = f"File '{filename}' uploaded and ready to be cleaned."
             uploaded_files_list.append(message)  # Add message to list
             status_messages = uploaded_files_list  # Update the display messages list
+        print("Files uploaded and stored in `uploaded_data`:", list(uploaded_data.keys()))  # Debugging output
 
     return html.Ul([html.Li(msg) for msg in status_messages])
 
@@ -125,12 +126,51 @@ def update_upload(contents, filenames):
 def clean_data(n_clicks):
     global uploaded_data
     if uploaded_data:
-        # Clean all uploaded datasets
-        uploaded_data = data.clean_uploaded_dataframes(uploaded_data)
-        return "Data cleaning is complete."
+        print("Starting data cleaning...")  # Debugging output
+
+        # Clean all uploaded datasets and update `uploaded_data` with cleaned data
+        cleaned_data = data.clean_uploaded_dataframes(uploaded_data)  # Store the cleaned data
+        uploaded_data = cleaned_data  # Update the global `uploaded_data` with cleaned data
+        print("Data cleaning complete. Current datasets:", list(uploaded_data.keys()))  # Debugging output
+
+        return "Data cleaning is complete. Cleaned data is now ready for feature engineering."
     else:
+        print("No data found for cleaning.")  # Debugging output
+
         return "No data available to clean. Please upload files first."
     
+
+
+#------------ Callback for feature engineering ------------------
+
+#------------ Callback for feature engineering ------------------
+
+@app.callback(
+    Output('feature-engineering-status', 'children'),
+    Input('feature-engineering-button', 'n_clicks'),
+    prevent_initial_call=True
+)
+def run_feature_engineering(n_clicks):
+    global uploaded_data
+    if uploaded_data:
+        try:
+            print("Starting feature engineering...")  # Debugging output
+            # Process feature engineering on all uploaded datasets
+            processed_data = data.combine_and_process_data(
+                uploaded_data,
+                max_lags=8,
+                encoding='label'  # Default encoding; could allow user selection if needed
+            )
+            uploaded_data = processed_data  # Update `uploaded_data` with processed data
+            print("Feature engineering complete. Processed data:", list(uploaded_data.keys()))  # Debugging output
+            return "Feature engineering is complete. You may now proceed with data exploration and model building."
+        except Exception as e:
+            print("Error during feature engineering:", str(e))
+            return f"Feature engineering failed: {str(e)}"
+    else:
+        print("No data found for feature engineering.")  # Debugging output
+        return "No data available for feature engineering. Please upload and clean files first."
+
 
 
 # #--------------- Callback for Model Predictions Plot----------------

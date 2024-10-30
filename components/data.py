@@ -80,52 +80,60 @@ def clean_uploaded_dataframes(uploaded_data):
 
 #---------------- Feature Engineering ------------------------------------------
 
-def combine_and_process_data(dataframes, lag_columns, max_lags=8, encoding='label'):
-    """
-    Combine multiple dataframes, add encoding, lags, and time-based features.
 
-    Parameters:
-    - dataframes: dict, dictionary of dataframes where each key is a country name
-    - lag_columns: list, list of columns to create lag features for
-    - max_lags: int, number of lag periods to create (default is 8)
-    - encoding: str, 'label' for Label Encoding or 'onehot' for One-Hot Encoding
 
-    Returns:
-    - combined_data: pd.DataFrame, the combined and processed dataframe
-    """
+import pandas as pd
+import numpy as np
+from sklearn.preprocessing import LabelEncoder
 
-    # Step 1: Combine dataframes with 'Country' column
+def combine_and_process_data(dataframes, max_lags=8, encoding='label'):
     combined_data = pd.DataFrame()
+
     for country, df in dataframes.items():
+        # Ensure the 'Date' column exists and is in datetime format
+        if 'Date' not in df.columns:
+            print(f"Error: Dataset for {country} is missing a 'Date' column.")
+            continue  # Skip this dataset
+
+        # Convert 'Date' to datetime format if it's not already
+        df['Date'] = pd.to_datetime(df['Date'], errors='coerce')
+
+        # Check for any conversion errors (NaT values) and handle them
+        if df['Date'].isnull().any():
+            print(f"Warning: Invalid date format in {country} dataset; dropping rows with invalid dates.")
+            df = df.dropna(subset=['Date'])
+
         df['Country'] = country
         combined_data = pd.concat([combined_data, df], axis=0)
-    combined_data = combined_data.reset_index(drop=True)
+    print("Data combined successfully.")  # Debugging output
 
-    # Step 2: Encode 'Country' feature
+    # Encoding
     if encoding == 'label':
         le = LabelEncoder()
         combined_data['Country'] = le.fit_transform(combined_data['Country'])
+        print("Label encoding applied.")  # Debugging output
     elif encoding == 'onehot':
-        combined_data = pd.get_dummies(combined_data, columns=['Country'], prefix='Country')
+        combined_data = pd.get_dummies(combined_data, columns=['Country'])
+        print("One-hot encoding applied.")  # Debugging output
 
-    # Step 3: Create lag features
+    # Generate lag features
+    lag_columns = combined_data.select_dtypes(include=[np.number]).columns  # Use all numerical columns for lagging
     for col in lag_columns:
         for lag in range(1, max_lags + 1):
             combined_data[f'{col}_Lag{lag}'] = combined_data.groupby('Country')[col].shift(lag)
+    print("Lag features generated.")  # Debugging output
 
-    # Step 4: Add 'Year' and 'Quarter' features from 'Date' column
-    if 'Date' in combined_data.columns and pd.api.types.is_datetime64_any_dtype(combined_data['Date']):
-        combined_data['Year'] = combined_data['Date'].dt.year
-        combined_data['Quarter'] = combined_data['Date'].dt.quarter
-    else:
-        raise ValueError("The 'Date' column is missing or not in datetime format")
+    # Additional feature engineering: 'Year' and 'Quarter' features from 'Date'
+    combined_data['Year'] = combined_data['Date'].dt.year
+    combined_data['Quarter'] = combined_data['Date'].dt.quarter
+    print("Year and Quarter features added.")  # Debugging output
 
-    # Step 5: Fill missing values within each country group
-    combined_data = combined_data.groupby('Country').apply(lambda group: group.fillna(method='ffill'))
-    combined_data = combined_data.groupby('Country').apply(lambda group: group.fillna(method='bfill'))
-    combined_data = combined_data.reset_index(drop=True)
+    # Handle missing values
+    combined_data = combined_data.groupby('Country').apply(lambda x: x.fillna(method='ffill').fillna(method='bfill'))
+    print("Missing values handled.")  # Debugging output
 
     return combined_data
+
 
 
 

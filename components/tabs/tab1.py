@@ -16,7 +16,7 @@ def render_tab1():
                 multiple=True
             ),
             html.Div(id='upload-status', style={'marginTop': '10px'})
-        ], style={'textAlign': 'left', 'paddingLeft': '0px'}),  # Set padding to 0 to align with the Clean Data button
+        ], style={'textAlign': 'left', 'paddingLeft': '0px'}),
 
         # Instructional Text for Clean Data Button
         html.P(
@@ -28,6 +28,18 @@ def render_tab1():
         html.Div([
             html.Button('Clean Data', id='clean-data-button', n_clicks=0, style={'cursor': 'pointer'}),
             html.Div(id='clean-status', style={'marginTop': '10px'})  # Display cleaning status
+        ]),
+
+        # Instructional Text for Feature Engineering
+        html.P(
+            "If you would like to engineer features in your dataset, please click the 'Feature Engineering' button below to proceed.",
+            style={'textAlign': 'left', 'fontSize': '18px', 'marginTop': '40px', 'marginBottom': '20px'}
+        ),
+
+        # Feature Engineering Button and Status
+        html.Div([
+            html.Button('Feature Engineering', id='feature-engineering-button', n_clicks=0, style={'cursor': 'pointer'}),
+            html.Div(id='feature-engineering-status', style={'marginTop': '10px'})  # Display feature engineering status
         ]),
 
         html.Div(id='data-overview', style={'marginTop': '20px'})
