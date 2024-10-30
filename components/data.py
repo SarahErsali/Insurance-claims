@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import os
 from io import StringIO
+from sklearn.preprocessing import LabelEncoder
 
 
 # ---------------------- Loading Database -------------------------------
@@ -76,6 +77,55 @@ def clean_uploaded_dataframes(uploaded_data):
     return cleaned_data
 
 
+
+#---------------- Feature Engineering ------------------------------------------
+
+def combine_and_process_data(dataframes, lag_columns, max_lags=8, encoding='label'):
+    """
+    Combine multiple dataframes, add encoding, lags, and time-based features.
+
+    Parameters:
+    - dataframes: dict, dictionary of dataframes where each key is a country name
+    - lag_columns: list, list of columns to create lag features for
+    - max_lags: int, number of lag periods to create (default is 8)
+    - encoding: str, 'label' for Label Encoding or 'onehot' for One-Hot Encoding
+
+    Returns:
+    - combined_data: pd.DataFrame, the combined and processed dataframe
+    """
+
+    # Step 1: Combine dataframes with 'Country' column
+    combined_data = pd.DataFrame()
+    for country, df in dataframes.items():
+        df['Country'] = country
+        combined_data = pd.concat([combined_data, df], axis=0)
+    combined_data = combined_data.reset_index(drop=True)
+
+    # Step 2: Encode 'Country' feature
+    if encoding == 'label':
+        le = LabelEncoder()
+        combined_data['Country'] = le.fit_transform(combined_data['Country'])
+    elif encoding == 'onehot':
+        combined_data = pd.get_dummies(combined_data, columns=['Country'], prefix='Country')
+
+    # Step 3: Create lag features
+    for col in lag_columns:
+        for lag in range(1, max_lags + 1):
+            combined_data[f'{col}_Lag{lag}'] = combined_data.groupby('Country')[col].shift(lag)
+
+    # Step 4: Add 'Year' and 'Quarter' features from 'Date' column
+    if 'Date' in combined_data.columns and pd.api.types.is_datetime64_any_dtype(combined_data['Date']):
+        combined_data['Year'] = combined_data['Date'].dt.year
+        combined_data['Quarter'] = combined_data['Date'].dt.quarter
+    else:
+        raise ValueError("The 'Date' column is missing or not in datetime format")
+
+    # Step 5: Fill missing values within each country group
+    combined_data = combined_data.groupby('Country').apply(lambda group: group.fillna(method='ffill'))
+    combined_data = combined_data.groupby('Country').apply(lambda group: group.fillna(method='bfill'))
+    combined_data = combined_data.reset_index(drop=True)
+
+    return combined_data
 
 
 
