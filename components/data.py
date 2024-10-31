@@ -11,11 +11,16 @@ from sklearn.preprocessing import LabelEncoder
 # Defining it first ensures it’s available whenever needed within the main function, regardless of when user data is provided.
 # It’s just a matter of organization, not execution timing.
 
+
+# Function for converting 'YYYY Qn' format to a datetime object
 def convert_quarter_to_date(quarter_str):
-    year, quarter = quarter_str.split()
-    year = int(year)
-    quarter_mapping = {'Q1': 1, 'Q2': 4, 'Q3': 7, 'Q4': 10}
-    return pd.Timestamp(year=year, month=quarter_mapping[quarter], day=1)
+    try:
+        year, quarter = quarter_str.split()
+        year = int(year)
+        quarter_mapping = {'Q1': 1, 'Q2': 4, 'Q3': 7, 'Q4': 10}
+        return pd.Timestamp(year=year, month=quarter_mapping[quarter], day=1)
+    except Exception:
+        return pd.NaT  # Return NaT for invalid formats
 
 def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
     for content, filename in zip(contents, filenames):
@@ -23,6 +28,7 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
         content_type, content_string = content.split(',')
         decoded = pd.read_csv(StringIO(content_string))
 
+        # Avoid overwriting existing dataframes with the same country name
         if country_name in existing_dataframes:
             existing_dataframes[f"{country_name}_new"] = decoded
         else:
@@ -31,32 +37,38 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
     for name, df in existing_dataframes.items():
         df.columns = df.columns.str.strip()
 
+        # Convert columns with numeric strings into floats
         for col in df.select_dtypes(include=['object']).columns:
             try:
                 df[col] = pd.to_numeric(df[col].str.replace(' ', '').str.replace(',', ''), errors='coerce')
             except Exception:
                 continue
 
+        # Apply date conversion on columns that might contain 'quarter' or 'date' in their names
         for col in df.columns:
             if 'quarter' in col.lower() or 'date' in col.lower():
                 df[col] = df[col].apply(lambda x: convert_quarter_to_date(x) if isinstance(x, str) else x)
             if col.lower() == 'date':
                 df[col] = pd.to_datetime(df[col], errors='coerce')
 
+        # Impute missing values for numeric columns
         for col in df.select_dtypes(include=['float64', 'int64']).columns:
             if df[col].isnull().any():
                 df[col] = df[col].fillna(df[col].mean())
 
+    # Combine all country dataframes into a single dataframe
     combined_df = pd.DataFrame()
     for country, df in existing_dataframes.items():
         df['Country'] = country
         combined_df = pd.concat([combined_df, df], axis=0, ignore_index=True)
 
+    # Encode 'Country' column
     le = LabelEncoder()
     combined_df['Country'] = le.fit_transform(combined_df['Country'])
 
+    # Generate lag features for numeric columns
     numeric_columns = combined_df.select_dtypes(include=['float64', 'int64']).columns
-    lagged_dataframes = [combined_df]  # list to store the main DF and lagged columns
+    lagged_dataframes = [combined_df]
 
     for lag in range(1, 9):
         lagged_df = combined_df[numeric_columns].groupby(combined_df['Country']).shift(lag)
@@ -65,13 +77,20 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
 
     combined_df = pd.concat(lagged_dataframes, axis=1)
 
-    if 'Date' in combined_df.columns:
+    # Extract Year and Quarter from 'Date' if it exists and is in datetime format
+    if 'Date' in combined_df.columns and pd.api.types.is_datetime64_any_dtype(combined_df['Date']):
         combined_df['Year'] = combined_df['Date'].dt.year
         combined_df['Quarter'] = combined_df['Date'].dt.quarter
+    else:
+        combined_df['Year'] = np.nan
+        combined_df['Quarter'] = np.nan
 
+    # Forward and backward fill missing values within each group
     combined_df = combined_df.groupby('Country').apply(lambda group: group.ffill().bfill()).reset_index(drop=True)
 
     return combined_df
+
+
 
 
 
