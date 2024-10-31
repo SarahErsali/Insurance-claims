@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 import dash
 import dash_bootstrap_components as dbc
-from dash import dcc, html, Input, Output, State
+from dash import Dash, dcc, html, Input, Output, State, dash_table
 from dash.dependencies import Input, Output
 import plotly.graph_objects as go
 import statsmodels.api as sm
@@ -36,9 +36,6 @@ import components.data as data
 #     get_ma_backtest_results,
 #     generate_forecast_tables
 # )
-
-
-#--------------------- Initialize the app---------------------
 
 
 # Initialize the app
@@ -84,41 +81,36 @@ def render_content(tab):
     elif tab == 'tab-5':
         return render_tab5()
 
-# Callback to handle the single button for file upload and processing
+
+# --------------------- Callback for handling file upload and processing ---------------------
+
+
+
+# Callback for handling file upload and processing
 @app.callback(
-    [Output('upload-status', 'children'),
-     Output('final-df-display', 'children')],
+    [Output('upload-status', 'children'), Output('processed-data-table', 'children')],
     Input('upload-data', 'contents'),
     State('upload-data', 'filename'),
     prevent_initial_call=True
 )
-def process_data(contents, filenames):
-    if contents is not None and filenames is not None:
-        # Initialize dictionary for uploaded data
-        uploaded_data = {}
-        for content, filename in zip(contents, filenames):
-            uploaded_data = data.load_uploaded_data(content, filename, uploaded_data)
+def process_uploaded_data(contents, filenames):
+    if contents is None:
+        return "No files uploaded.", html.Div()
 
-        # Run data cleaning and feature engineering on all files
-        cleaned_data = data.clean_uploaded_dataframes(uploaded_data)
-        final_df = data.combine_and_process_data(cleaned_data, max_lags=8, encoding='label')
+    # Call the function to process the uploaded data
+    processed_data = data.load_and_process_uploaded_data(contents, filenames, {})
 
-        # Status message
-        status_message = "Data processing is complete. Below is the combined and processed dataframe preview."
+    # Prepare the status message
+    status_message = "Data processing complete. Displaying processed data below."
 
-        # Display the first 20 rows of the final DataFrame
-        final_display = html.Div([
-            html.H5("Processed Data Preview (First 20 Rows):"),
-            dcc.DataTable(
-                data=final_df.head(20).to_dict('records'),
-                columns=[{"name": col, "id": col} for col in final_df.columns],
-                style_table={'overflowX': 'auto'}
-            )
-        ])
+    # Convert the first 20 rows of processed data to display in a table
+    table = dash_table.DataTable(
+        data=processed_data.head(20).to_dict('records'),
+        columns=[{"name": i, "id": i} for i in processed_data.columns],
+        style_table={'overflowX': 'auto'}
+    )
 
-        return status_message, final_display
-    else:
-        return "Please upload your data files first.", ""
+    return status_message, table
 
 
 
