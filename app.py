@@ -13,6 +13,8 @@ from components.tabs.tab3 import render_tab3
 from components.tabs.tab4 import render_tab4
 from components.tabs.tab5 import render_tab5
 import components.data as data
+import base64
+from io import StringIO
 # from components.functions import (
 #     get_xgboost_predictions,
 #     get_lightgbm_predictions,
@@ -86,7 +88,7 @@ def render_content(tab):
 
 
 
-# Callback for handling file upload and processing
+
 @app.callback(
     [Output('upload-status', 'children'), Output('processed-data-table', 'children')],
     Input('upload-data', 'contents'),
@@ -97,20 +99,36 @@ def process_uploaded_data(contents, filenames):
     if contents is None:
         return "No files uploaded.", html.Div()
 
-    # Call the function to process the uploaded data
-    processed_data = data.load_and_process_uploaded_data(contents, filenames, {})
+    uploaded_data = {}
+    try:
+        # Decode and process each uploaded file
+        for content, filename in zip(contents, filenames):
+            _, content_string = content.split(',')
+            decoded = base64.b64decode(content_string).decode('utf-8')
+            df = pd.read_csv(StringIO(decoded))
+            country_name = filename.split('.')[0]
+            uploaded_data[country_name] = df
 
-    # Prepare the status message
-    status_message = "Data processing complete. Displaying processed data below."
+        processed_data = data.load_and_process_uploaded_data(contents, filenames, uploaded_data)
+        status_message = "Data processing complete. Displaying processed data below."
 
-    # Convert the first 20 rows of processed data to display in a table
-    table = dash_table.DataTable(
-        data=processed_data.head(20).to_dict('records'),
-        columns=[{"name": i, "id": i} for i in processed_data.columns],
-        style_table={'overflowX': 'auto'}
-    )
+        # Display the DataFrame if processing is successful
+        if isinstance(processed_data, pd.DataFrame):
+            table = dash_table.DataTable(
+                data=processed_data.head(20).to_dict('records'),
+                columns=[{"name": i, "id": i} for i in processed_data.columns],
+                style_table={'overflowX': 'auto'},
+                style_cell={'textAlign': 'left', 'padding': '5px'},
+                style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold'}
+            )
+            return status_message, table
+        else:
+            return "Error: Processed data is not in the expected format.", html.Div()
 
-    return status_message, table
+    except Exception as e:
+        return f"An error occurred during processing: {e}", html.Div()
+
+
 
 
 
