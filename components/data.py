@@ -40,7 +40,6 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
         for col in df.columns:
             if 'quarter' in col.lower() or 'date' in col.lower():
                 df[col] = df[col].apply(lambda x: convert_quarter_to_date(x) if isinstance(x, str) else x)
-            # Ensure 'Date' is in datetime format
             if col.lower() == 'date':
                 df[col] = pd.to_datetime(df[col], errors='coerce')
 
@@ -57,25 +56,22 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
     combined_df['Country'] = le.fit_transform(combined_df['Country'])
 
     numeric_columns = combined_df.select_dtypes(include=['float64', 'int64']).columns
-    lagged_columns = []
-    for col in numeric_columns:
-        for lag in range(1, 9):
-            lagged_col = combined_df.groupby('Country')[col].shift(lag)
-            lagged_columns.append(lagged_col.rename(f"{col}_Lag{lag}"))
+    lagged_dataframes = [combined_df]  # list to store the main DF and lagged columns
 
-    # Concatenate all lagged columns at once to avoid fragmentation
-    combined_df = pd.concat([combined_df] + lagged_columns, axis=1)
+    for lag in range(1, 9):
+        lagged_df = combined_df[numeric_columns].groupby(combined_df['Country']).shift(lag)
+        lagged_df = lagged_df.add_suffix(f"_Lag{lag}")
+        lagged_dataframes.append(lagged_df)
+
+    combined_df = pd.concat(lagged_dataframes, axis=1)
 
     if 'Date' in combined_df.columns:
         combined_df['Year'] = combined_df['Date'].dt.year
         combined_df['Quarter'] = combined_df['Date'].dt.quarter
 
-    combined_df = combined_df.reset_index(drop=True)
-    combined_df = combined_df.groupby('Country', as_index=False).apply(lambda group: group.fillna(method='ffill').fillna(method='bfill'))
-    combined_df = combined_df.reset_index(drop=True)
+    combined_df = combined_df.groupby('Country').apply(lambda group: group.ffill().bfill()).reset_index(drop=True)
 
     return combined_df
-
 
 
 
