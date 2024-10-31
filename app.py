@@ -41,19 +41,14 @@ import components.data as data
 #--------------------- Initialize the app---------------------
 
 
+# Initialize the app
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.title = "Insurance Consultant Service"
-
-# Initialize a dictionary to store uploaded data
-uploaded_data = {}
-
-# Stores names of all uploaded files
-uploaded_files_list = []
 
 # Define the layout of the app
 app.layout = html.Div([
     html.Header([
-        html.H1("BaNex Consulting Insurance Service", style={'textAlign': 'center', 'fontSize': '48px', 'marginTop': '10px'}),
+        html.H1("Wellcome to BaNex Consulting Insurance Service", style={'textAlign': 'center', 'fontSize': '48px', 'marginTop': '10px'}),
     ], style={'backgroundColor': '#f0f0f0', 'padding': '50px'}),
 
     # Navigation tabs
@@ -70,8 +65,7 @@ app.layout = html.Div([
     html.Div(id='tabs-content', style={'textAlign': 'center', 'padding': '0px', 'height': '50vh'})
 ])
 
-#----------- Callback to update the page content based on the selected tab ------------------
-
+# Callback to update the page content based on the selected tab
 @app.callback(
     Output('tabs-content', 'children'),
     Input('tabs-example', 'value')
@@ -90,86 +84,57 @@ def render_content(tab):
     elif tab == 'tab-5':
         return render_tab5()
 
-#------------ Callback for handling file upload ------------------
-
+# Callback to handle the single button for file upload and processing
 @app.callback(
-    Output('upload-status', 'children'),
+    [Output('upload-status', 'children'),
+     Output('final-df-display', 'children')],
     Input('upload-data', 'contents'),
     State('upload-data', 'filename'),
     prevent_initial_call=True
 )
-def update_upload(contents, filenames):
-    global uploaded_data, uploaded_files_list
-    status_messages = []
-
-    if contents is not None:
+def process_data(contents, filenames):
+    if contents is not None and filenames is not None:
+        # Initialize dictionary for uploaded data
+        uploaded_data = {}
         for content, filename in zip(contents, filenames):
             uploaded_data = data.load_uploaded_data(content, filename, uploaded_data)
-            message = f"File '{filename}' uploaded and ready to be cleaned."
-            uploaded_files_list.append(message)  # Add message to list
-            status_messages = uploaded_files_list  # Update the display messages list
-        print("Files uploaded and stored in `uploaded_data`:", list(uploaded_data.keys()))  # Debugging output
 
-    return html.Ul([html.Li(msg) for msg in status_messages])
+        # Run data cleaning and feature engineering on all files
+        cleaned_data = data.clean_uploaded_dataframes(uploaded_data)
+        final_df = data.combine_and_process_data(cleaned_data, max_lags=8, encoding='label')
 
+        # Status message
+        status_message = "Data processing is complete. Below is the combined and processed dataframe preview."
 
-
-#------------ Callback for cleaning uploaded files ------------------
-
-
-
-@app.callback(
-    Output('clean-status', 'children'),
-    Input('clean-data-button', 'n_clicks'),
-    prevent_initial_call=True
-)
-def clean_data(n_clicks):
-    global uploaded_data
-    if uploaded_data:
-        print("Starting data cleaning...")  # Debugging output
-
-        # Clean all uploaded datasets and update `uploaded_data` with cleaned data
-        cleaned_data = data.clean_uploaded_dataframes(uploaded_data)  # Store the cleaned data
-        uploaded_data = cleaned_data  # Update the global `uploaded_data` with cleaned data
-        print("Data cleaning complete. Current datasets:", list(uploaded_data.keys()))  # Debugging output
-
-        return "Data cleaning is complete. Cleaned data is now ready for feature engineering."
-    else:
-        print("No data found for cleaning.")  # Debugging output
-
-        return "No data available to clean. Please upload files first."
-    
-
-
-#------------ Callback for feature engineering ------------------
-
-#------------ Callback for feature engineering ------------------
-
-@app.callback(
-    Output('feature-engineering-status', 'children'),
-    Input('feature-engineering-button', 'n_clicks'),
-    prevent_initial_call=True
-)
-def run_feature_engineering(n_clicks):
-    global uploaded_data
-    if uploaded_data:
-        try:
-            print("Starting feature engineering...")  # Debugging output
-            # Process feature engineering on all uploaded datasets
-            processed_data = data.combine_and_process_data(
-                uploaded_data,
-                max_lags=8,
-                encoding='label'  # Default encoding; could allow user selection if needed
+        # Display the first 20 rows of the final DataFrame
+        final_display = html.Div([
+            html.H5("Processed Data Preview (First 20 Rows):"),
+            dcc.DataTable(
+                data=final_df.head(20).to_dict('records'),
+                columns=[{"name": col, "id": col} for col in final_df.columns],
+                style_table={'overflowX': 'auto'}
             )
-            uploaded_data = processed_data  # Update `uploaded_data` with processed data
-            print("Feature engineering complete. Processed data:", list(uploaded_data.keys()))  # Debugging output
-            return "Feature engineering is complete. You may now proceed with data exploration and model building."
-        except Exception as e:
-            print("Error during feature engineering:", str(e))
-            return f"Feature engineering failed: {str(e)}"
+        ])
+
+        return status_message, final_display
     else:
-        print("No data found for feature engineering.")  # Debugging output
-        return "No data available for feature engineering. Please upload and clean files first."
+        return "Please upload your data files first.", ""
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
