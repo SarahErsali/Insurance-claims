@@ -114,8 +114,8 @@ def process_uploaded_data(contents, filenames):
 # --------------------- Callback for ML Models predictions ---------------------
 
 @app.callback(
-    Output('model-predictions-graph', 'figure'),
-    Input('model-selection', 'value'),
+    Output('model-comparison-graph', 'figure'),  # Matches the Graph id in tab3.py
+    Input('model-dropdown-prediction', 'value'),  # Matches the Dropdown id in tab3.py
 )
 def update_model_predictions(selected_models):
     global combined_df  # Access the global combined_df variable
@@ -128,8 +128,9 @@ def update_model_predictions(selected_models):
     xgb_default_preds, lgb_default_preds = train_default_models(combined_df)
     re_xgb_preds, re_lgb_preds, _, _ = train_optimized_models(combined_df)
 
-    # Dummy x-axis (dates or index for predictions)
-    x_axis = range(len(xgb_default_preds))  # Replace with actual dates if available
+    # Use actual dates from the blind test period for the x-axis, if available
+    blind_test_start, blind_test_end = "2023-01-01", "2024-03-31"
+    x_axis = pd.date_range(start=blind_test_start, end=blind_test_end, freq='QE')
 
     traces = []
     # Add traces based on selected models
@@ -156,6 +157,7 @@ def update_model_predictions(selected_models):
         )
     }
     return figure
+
 
 
 
