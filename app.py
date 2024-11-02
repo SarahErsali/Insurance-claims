@@ -15,32 +15,12 @@ from components.tabs.tab5 import render_tab5
 import components.data as data
 import base64
 from io import StringIO
-# from components.functions import (
-#     get_xgboost_predictions,
-#     get_lightgbm_predictions,
-#     get_arima_predictions,
-#     get_moving_average_predictions,
-#     calculate_model_metrics,
-#     arima_test_data,
-#     ma_y_test,
-#     arima_train_data,
-#     get_xgboost_feature_importance,
-#     get_lightgbm_feature_importance,
-#     property_data_model,
-#     get_xgboost_predictions_storm,
-#     get_lightgbm_predictions_storm,
-#     get_arima_predictions_storm,
-#     get_moving_average_predictions_storm,
-#     ts_actual_y,
-#     get_xgb_backtest_results,
-#     get_lgb_backtest_results,
-#     get_arima_backtest_results,
-#     get_ma_backtest_results,
-#     generate_forecast_tables
-# )
+from components.functions import train_default_models, train_optimized_models
 
 
-# Initialize the app
+#-------------------- Initialize the app --------------------------------
+
+
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.title = "Insurance Consultant Service"
 
@@ -64,7 +44,9 @@ app.layout = html.Div([
     html.Div(id='tabs-content', style={'textAlign': 'center', 'padding': '0px', 'height': '50vh'})
 ])
 
-# Callback to update the page content based on the selected tab
+#----------------- Callback for page content --------------------------
+
+
 @app.callback(
     Output('tabs-content', 'children'),
     Input('tabs-example', 'value')
@@ -88,13 +70,14 @@ def render_content(tab):
 
 
 
-
 @app.callback(
     [Output('upload-status', 'children'), Output('processed-data-table', 'children')],
     Input('upload-data', 'contents'),
     State('upload-data', 'filename'),
     prevent_initial_call=True
 )
+
+
 def process_uploaded_data(contents, filenames):
     if contents is None:
         return "No files uploaded.", html.Div()
@@ -108,14 +91,12 @@ def process_uploaded_data(contents, filenames):
             df = pd.read_csv(StringIO(decoded))
             country_name = filename.split('.')[0]
             uploaded_data[country_name] = df
-
         processed_data = data.load_and_process_uploaded_data(contents, filenames, uploaded_data)
         status_message = "Data processing complete. Displaying processed data below."
 
-        # Display the DataFrame if processing is successful
         if isinstance(processed_data, pd.DataFrame):
             table = dash_table.DataTable(
-                data=processed_data.head(20).to_dict('records'),
+                data=processed_data.head(50).to_dict('records'),
                 columns=[{"name": i, "id": i} for i in processed_data.columns],
                 style_table={'overflowX': 'auto'},
                 style_cell={'textAlign': 'left', 'padding': '5px'},
@@ -129,9 +110,45 @@ def process_uploaded_data(contents, filenames):
         return f"An error occurred during processing: {e}", html.Div()
 
 
+# --------------------- Callback for ML Models predictions ---------------------
 
+@app.callback(
+    Output('model-predictions-graph', 'figure'),
+    Input('model-selection', 'value'),
+)
+def update_model_predictions(selected_models):
+    # Train and get predictions for all models (if they aren’t precomputed)
+    xgb_default_preds, lgb_default_preds = data.train_default_models(data.combined_df)
+    re_xgb_preds, re_lgb_preds, _, _ = data.train_optimized_models(data.combined_df)
 
+    # Dummy x-axis (dates or index for predictions)
+    x_axis = range(len(xgb_default_preds))  # Replace with actual dates if available
 
+    traces = []
+    # Add traces based on selected models
+    if 'xgb_default' in selected_models:
+        traces.append(go.Scatter(x=x_axis, y=xgb_default_preds, mode='lines', name='Default XGBoost'))
+
+    if 'lgb_default' in selected_models:
+        traces.append(go.Scatter(x=x_axis, y=lgb_default_preds, mode='lines', name='Default LightGBM'))
+
+    if 'xgb_optimized' in selected_models:
+        traces.append(go.Scatter(x=x_axis, y=re_xgb_preds, mode='lines', name='Optimized XGBoost'))
+
+    if 'lgb_optimized' in selected_models:
+        traces.append(go.Scatter(x=x_axis, y=re_lgb_preds, mode='lines', name='Optimized LightGBM'))
+
+    # Define figure layout
+    figure = {
+        'data': traces,
+        'layout': go.Layout(
+            title="Model Predictions",
+            xaxis={'title': 'Data Points'},
+            yaxis={'title': 'Predicted Values'},
+            template="plotly_dark"
+        )
+    }
+    return figure
 
 
 

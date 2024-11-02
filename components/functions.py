@@ -3,54 +3,124 @@ import numpy as np
 from xgboost import XGBRegressor
 from lightgbm import LGBMRegressor
 import statsmodels.api as sm
-from sklearn.metrics import (mean_absolute_percentage_error)
+from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error
 import shap
+from math import sqrt
+import optuna
 #from components.data import X_train, y_train, X_val, y_val, X_blind_test, property_data_model, property_data_feature_selected
 import matplotlib
 matplotlib.use('Agg')  # Switch to a non-interactive backend
 import matplotlib.pyplot as plt
 import os
+from components.data import convert_quarter_to_date, load_and_process_uploaded_data
+
+#----------------------------------- Set Training Data -----------------------------------
+
+
+
+# Call the function to get combined_df
+combined_df = load_and_process_uploaded_data()
+
+
+#def prepare_train_val_data(combined_df, target_column='NET Claims Incurred'):
+train_start, train_end = "2016-07-01", "2020-12-31"
+val_start, val_end = "2021-01-01", "2022-12-31"
+blind_test_start, blind_test_end = "2023-01-01", "2024-03-31"
+
+train_data = combined_df[(combined_df['Date'] >= train_start) & (combined_df['Date'] <= train_end)]
+val_data = combined_df[(combined_df['Date'] >= val_start) & (combined_df['Date'] <= val_end)]
+blind_test_data = combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]
+
+
+target_column='NET Claims Incurred'
+X_train = train_data.drop(columns=[target_column, 'Date'])
+y_train = train_data[target_column]
+X_val = val_data.drop(columns=[target_column, 'Date'])
+y_val = val_data[target_column]
+X_blind_test = blind_test_data.drop(columns=[target_column, 'Date'])
+y_blind_test = blind_test_data[target_column]
+
+    #return X_train, y_train, X_val, y_val, X_blind_test, y_blind_test
+
+#----------------------------------- Train Default Models -----------------------------------
+
+def train_default_models():    
+    xgb_model = XGBRegressor()
+    xgb_model.fit(X_train, y_train)
+    xgb_blind_test_preds = xgb_model.predict(X_blind_test)
+    
+    lgb_model = LGBMRegressor()
+    lgb_model.fit(X_train, y_train)
+    lgb_blind_test_preds = lgb_model.predict(X_blind_test)
+    
+    return xgb_blind_test_preds, lgb_blind_test_preds
+
+#----------------------------------- Tune and Train Optimized Models -----------------------------------
+
+def train_optimized_models(n_trials=20):
+
+    def xgb_objective(trial):
+        params = {
+            'n_estimators': trial.suggest_int('n_estimators', 50, 300),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
+            'max_depth': trial.suggest_int('max_depth', 3, 10),
+            'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+            'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 1.0),
+            'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 1.0),
+        }
+        
+        model = XGBRegressor(**params, objective='reg:squarederror', random_state=42)
+        model.fit(X_train, y_train)
+        val_preds = model.predict(X_val)
+        rmse = sqrt(mean_squared_error(y_val, val_preds))
+        return rmse
+
+    def lgb_objective(trial):
+        params = {
+            'n_estimators': trial.suggest_int('n_estimators', 50, 300),
+            'learning_rate': trial.suggest_float('learning_rate', 0.01, 0.3),
+            'max_depth': trial.suggest_int('max_depth', 3, 10),
+            'num_leaves': trial.suggest_int('num_leaves', 20, 50),
+            'subsample': trial.suggest_float('subsample', 0.5, 1.0),
+            'colsample_bytree': trial.suggest_float('colsample_bytree', 0.5, 1.0),
+            'reg_alpha': trial.suggest_float('reg_alpha', 0.0, 1.0),
+            'reg_lambda': trial.suggest_float('reg_lambda', 0.0, 1.0),
+        }
+        
+        model = LGBMRegressor(**params, random_state=42)
+        model.fit(X_train, y_train)
+        val_preds = model.predict(X_val)
+        rmse = sqrt(mean_squared_error(y_val, val_preds))
+        return rmse
+
+    # Run Optuna optimization
+    xgb_study = optuna.create_study(direction='minimize')
+    xgb_study.optimize(xgb_objective, n_trials=n_trials)
+    best_xgb_params = xgb_study.best_params
+
+    lgb_study = optuna.create_study(direction='minimize')
+    lgb_study.optimize(lgb_objective, n_trials=n_trials)
+    best_lgb_params = lgb_study.best_params
+
+
+    X_combined = pd.concat([X_train, X_val])
+    y_combined = pd.concat([y_train, y_val])
+
+    re_xgb_model = XGBRegressor(**best_xgb_params, objective='reg:squarederror', random_state=42)
+    re_xgb_model.fit(X_combined, y_combined)
+    re_xgb_blind_test_preds = re_xgb_model.predict(X_blind_test)
+
+    re_lgb_model = LGBMRegressor(**best_lgb_params, random_state=42)
+    re_lgb_model.fit(X_combined, y_combined)
+    re_lgb_blind_test_preds = re_lgb_model.predict(X_blind_test)
+    
+    return re_xgb_blind_test_preds, re_lgb_blind_test_preds, best_xgb_params, best_lgb_params
 
 
 
 
-# X_combined = pd.concat([X_train, X_val], ignore_index=True)
-# y_combined = pd.concat([y_train, y_val], ignore_index=True)
-# xgb_best_params = {
-#     'n_estimators': 100,
-#     'max_depth': 5,
-#     'learning_rate': 0.1,
-#     'subsample': 0.8,
-#     'colsample_bytree': 1,
-#     'gamma': 0,
-# }
-# re_xgb_model = XGBRegressor(**xgb_best_params)
-# re_xgb_model.fit(X_combined, y_combined)
-# lgb_best_params = {
-#     'n_estimators': 200,
-#     'max_depth': 5,  
-#     'learning_rate': 0.1,
-#     'num_leaves': 10
-# }
-# re_lgb_model = LGBMRegressor(**lgb_best_params)
-# re_lgb_model.fit(X_combined, y_combined)
-# # Define a separate dataset for the ARIMA model
-# arima_data = property_data_model.copy()
-# # Set 'Date' as index for time series modeling
-# arima_data.set_index('Date', inplace=True)
-# # Explicitly set the frequency to monthly (fixes the frequency warning)
-# arima_data.index = pd.date_range(start=arima_data.index[0], periods=len(arima_data), freq='ME')
-# # Split data for ARIMA
-# arima_train_data = arima_data[(arima_data.index.year >= 2008) & (arima_data.index.year <= 2022)]
-# arima_test_data = arima_data[(arima_data.index.year >= 2023) & (arima_data.index.year <= 2024)]
-# # Manually set the best parameters
-# best_pdq = (3, 2, 3)  # ARIMA order
-# best_seasonal_pdq = (1, 1, 1, 12)  # Seasonal order
-# ma_data = property_data_model.copy()
-# # ma_train_data = ma_data[(ma_data['Date'].dt.year >= 2008) & (ma_data['Date'].dt.year <= 2022)]
-# ma_test_data = ma_data[(ma_data['Date'].dt.year >= 2023) & (ma_data['Date'].dt.year <= 2024)]
-# # ma_y_train = ma_train_data['Claims_Incurred']
-# ma_y_test = ma_test_data['Claims_Incurred']
+
 
 
 
