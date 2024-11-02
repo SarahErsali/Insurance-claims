@@ -12,39 +12,24 @@ import matplotlib
 matplotlib.use('Agg')  # Switch to a non-interactive backend
 import matplotlib.pyplot as plt
 import os
-from components.data import convert_quarter_to_date, load_and_process_uploaded_data
-
-#----------------------------------- Set Training Data -----------------------------------
+#from components.data import convert_quarter_to_date, load_and_process_uploaded_data
 
 
-
-# Call the function to get combined_df
-combined_df = load_and_process_uploaded_data()
-
-
-#def prepare_train_val_data(combined_df, target_column='NET Claims Incurred'):
-train_start, train_end = "2016-07-01", "2020-12-31"
-val_start, val_end = "2021-01-01", "2022-12-31"
-blind_test_start, blind_test_end = "2023-01-01", "2024-03-31"
-
-train_data = combined_df[(combined_df['Date'] >= train_start) & (combined_df['Date'] <= train_end)]
-val_data = combined_df[(combined_df['Date'] >= val_start) & (combined_df['Date'] <= val_end)]
-blind_test_data = combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]
-
-
-target_column='NET Claims Incurred'
-X_train = train_data.drop(columns=[target_column, 'Date'])
-y_train = train_data[target_column]
-X_val = val_data.drop(columns=[target_column, 'Date'])
-y_val = val_data[target_column]
-X_blind_test = blind_test_data.drop(columns=[target_column, 'Date'])
-y_blind_test = blind_test_data[target_column]
-
-    #return X_train, y_train, X_val, y_val, X_blind_test, y_blind_test
 
 #----------------------------------- Train Default Models -----------------------------------
 
-def train_default_models():    
+def train_default_models(combined_df):    
+    target_column = 'NET Claims Incurred'
+    train_start, train_end = "2016-07-01", "2020-12-31"
+    blind_test_start, blind_test_end = "2023-01-01", "2024-03-31"
+
+    train_data = combined_df[(combined_df['Date'] >= train_start) & (combined_df['Date'] <= train_end)]
+    blind_test_data = combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]
+
+    X_train = train_data.drop(columns=[target_column, 'Date'])
+    y_train = train_data[target_column]
+    X_blind_test = blind_test_data.drop(columns=[target_column, 'Date'])
+
     xgb_model = XGBRegressor()
     xgb_model.fit(X_train, y_train)
     xgb_blind_test_preds = xgb_model.predict(X_blind_test)
@@ -57,7 +42,21 @@ def train_default_models():
 
 #----------------------------------- Tune and Train Optimized Models -----------------------------------
 
-def train_optimized_models(n_trials=20):
+def train_optimized_models(combined_df, n_trials=20):
+    target_column = 'NET Claims Incurred'
+    train_start, train_end = "2016-07-01", "2020-12-31"
+    val_start, val_end = "2021-01-01", "2022-12-31"
+    blind_test_start, blind_test_end = "2023-01-01", "2024-03-31"
+
+    train_data = combined_df[(combined_df['Date'] >= train_start) & (combined_df['Date'] <= train_end)]
+    val_data = combined_df[(combined_df['Date'] >= val_start) & (combined_df['Date'] <= val_end)]
+    blind_test_data = combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]
+
+    X_train = train_data.drop(columns=[target_column, 'Date'])
+    y_train = train_data[target_column]
+    X_val = val_data.drop(columns=[target_column, 'Date'])
+    y_val = val_data[target_column]
+    X_blind_test = blind_test_data.drop(columns=[target_column, 'Date'])
 
     def xgb_objective(trial):
         params = {
@@ -103,7 +102,6 @@ def train_optimized_models(n_trials=20):
     lgb_study.optimize(lgb_objective, n_trials=n_trials)
     best_lgb_params = lgb_study.best_params
 
-
     X_combined = pd.concat([X_train, X_val])
     y_combined = pd.concat([y_train, y_val])
 
@@ -116,6 +114,7 @@ def train_optimized_models(n_trials=20):
     re_lgb_blind_test_preds = re_lgb_model.predict(X_blind_test)
     
     return re_xgb_blind_test_preds, re_lgb_blind_test_preds, best_xgb_params, best_lgb_params
+
 
 
 

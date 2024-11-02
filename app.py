@@ -12,14 +12,14 @@ from components.tabs.tab1 import render_tab1
 from components.tabs.tab3 import render_tab3
 from components.tabs.tab4 import render_tab4
 from components.tabs.tab5 import render_tab5
-import components.data as data
+#import components.data as data
+from components.data import load_and_process_uploaded_data
 import base64
 from io import StringIO
 from components.functions import train_default_models, train_optimized_models
 
 
-#-------------------- Initialize the app --------------------------------
-
+# -------------------- Initialize the app --------------------------------
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
 app.title = "Insurance Consultant Service"
@@ -44,8 +44,11 @@ app.layout = html.Div([
     html.Div(id='tabs-content', style={'textAlign': 'center', 'padding': '0px', 'height': '50vh'})
 ])
 
-#----------------- Callback for page content --------------------------
+# ----------------- Global Variable for Processed Data ------------------
 
+combined_df = None  # Placeholder for the global processed DataFrame
+
+# ----------------- Callback for page content --------------------------
 
 @app.callback(
     Output('tabs-content', 'children'),
@@ -65,10 +68,7 @@ def render_content(tab):
     elif tab == 'tab-5':
         return render_tab5()
 
-
 # --------------------- Callback for handling file upload and processing ---------------------
-
-
 
 @app.callback(
     [Output('upload-status', 'children'), Output('processed-data-table', 'children')],
@@ -76,9 +76,9 @@ def render_content(tab):
     State('upload-data', 'filename'),
     prevent_initial_call=True
 )
-
-
 def process_uploaded_data(contents, filenames):
+    global combined_df  # Access the global combined_df variable
+
     if contents is None:
         return "No files uploaded.", html.Div()
 
@@ -91,13 +91,15 @@ def process_uploaded_data(contents, filenames):
             df = pd.read_csv(StringIO(decoded))
             country_name = filename.split('.')[0]
             uploaded_data[country_name] = df
-        processed_data = data.load_and_process_uploaded_data(contents, filenames, uploaded_data)
+        
+        # Process data and store in the global combined_df variable
+        combined_df = load_and_process_uploaded_data(contents, filenames, uploaded_data)
         status_message = "Data processing complete. Displaying processed data below."
 
-        if isinstance(processed_data, pd.DataFrame):
+        if isinstance(combined_df, pd.DataFrame):
             table = dash_table.DataTable(
-                data=processed_data.head(50).to_dict('records'),
-                columns=[{"name": i, "id": i} for i in processed_data.columns],
+                data=combined_df.head(50).to_dict('records'),
+                columns=[{"name": i, "id": i} for i in combined_df.columns],
                 style_table={'overflowX': 'auto'},
                 style_cell={'textAlign': 'left', 'padding': '5px'},
                 style_header={'backgroundColor': 'rgb(230, 230, 230)', 'fontWeight': 'bold'}
@@ -109,7 +111,6 @@ def process_uploaded_data(contents, filenames):
     except Exception as e:
         return f"An error occurred during processing: {e}", html.Div()
 
-
 # --------------------- Callback for ML Models predictions ---------------------
 
 @app.callback(
@@ -117,9 +118,15 @@ def process_uploaded_data(contents, filenames):
     Input('model-selection', 'value'),
 )
 def update_model_predictions(selected_models):
-    # Train and get predictions for all models (if they aren’t precomputed)
-    xgb_default_preds, lgb_default_preds = data.train_default_models(data.combined_df)
-    re_xgb_preds, re_lgb_preds, _, _ = data.train_optimized_models(data.combined_df)
+    global combined_df  # Access the global combined_df variable
+
+    # Check if combined_df has been processed and is available
+    if combined_df is None:
+        return go.Figure()  # Return an empty figure if data is not yet available
+
+    # Train and get predictions for the selected models
+    xgb_default_preds, lgb_default_preds = train_default_models(combined_df)
+    re_xgb_preds, re_lgb_preds, _, _ = train_optimized_models(combined_df)
 
     # Dummy x-axis (dates or index for predictions)
     x_axis = range(len(xgb_default_preds))  # Replace with actual dates if available
