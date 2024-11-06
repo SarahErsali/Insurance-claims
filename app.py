@@ -98,7 +98,7 @@ def process_uploaded_data(contents, filenames):
 
         if isinstance(combined_df, pd.DataFrame):
             table = dash_table.DataTable(
-                data=combined_df.head(50).to_dict('records'),
+                data=combined_df.head(10).to_dict('records'),
                 columns=[{"name": i, "id": i} for i in combined_df.columns],
                 style_table={'overflowX': 'auto'},
                 style_cell={'textAlign': 'left', 'padding': '5px'},
@@ -114,10 +114,10 @@ def process_uploaded_data(contents, filenames):
 # --------------------- Callback for ML Models predictions ---------------------
 
 @app.callback(
-    Output('model-comparison-graph', 'figure'),  # Matches the Graph id in tab3.py
-    Input('model-dropdown-prediction', 'value'),  # Matches the Dropdown id in tab3.py
+    Output('model-comparison-graph', 'figure'),
+    Input('model-dropdown-prediction', 'value')
 )
-def update_model_predictions(selected_models):
+def update_model_predictions(models_selected):
     global combined_df  # Access the global combined_df variable
 
     # Check if combined_df has been processed and is available
@@ -125,38 +125,57 @@ def update_model_predictions(selected_models):
         return go.Figure()  # Return an empty figure if data is not yet available
 
     # Train and get predictions for the selected models
-    xgb_default_preds, lgb_default_preds = train_default_models(combined_df)
-    re_xgb_preds, re_lgb_preds, _, _ = train_optimized_models(combined_df)
+    xgb_val_preds, xgb_blind_test_preds, lgb_val_preds, lgb_blind_test_preds = train_default_models(combined_df)
+    re_xgb_blind_test_preds, re_lgb_blind_test_preds, _, _ = train_optimized_models(combined_df)
 
-    # Use actual dates from the blind test period for the x-axis, if available
-    blind_test_start, blind_test_end = "2023-01-01", "2024-03-31"
-    x_axis = pd.date_range(start=blind_test_start, end=blind_test_end, freq='QE')
+    # Define the x-axis for validation and blind test periods
+    val_start, val_end = "2022-01-01", "2023-03-31"
+    blind_test_start, blind_test_end = "2023-04-01", "2024-03-31"
+    x_axis_val = pd.date_range(start=val_start, end=val_end, freq='QE')
+    x_axis_blind_test = pd.date_range(start=blind_test_start, end=blind_test_end, freq='QE')
 
-    traces = []
-    # Add traces based on selected models
-    if 'xgb_default' in selected_models:
-        traces.append(go.Scatter(x=x_axis, y=xgb_default_preds, mode='lines', name='Default XGBoost'))
+    fig = go.Figure()
 
-    if 'lgb_default' in selected_models:
-        traces.append(go.Scatter(x=x_axis, y=lgb_default_preds, mode='lines', name='Default LightGBM'))
+    # Loop through selected models and add traces accordingly
+    for model in models_selected:
+        if model == 'xgb_default_val':
+            fig.add_trace(go.Scatter(x=x_axis_val, y=xgb_val_preds, mode='lines', name='Default XGBoost (Validation)'))
+        
+        if model == 'lgb_default_val':
+            fig.add_trace(go.Scatter(x=x_axis_val, y=lgb_val_preds, mode='lines', name='Default LightGBM (Validation)'))
 
-    if 'xgb_optimized' in selected_models:
-        traces.append(go.Scatter(x=x_axis, y=re_xgb_preds, mode='lines', name='Optimized XGBoost'))
+        if model == 'xgb_default_blind_test':
+            fig.add_trace(go.Scatter(x=x_axis_blind_test, y=xgb_blind_test_preds, mode='lines', name='Default XGBoost (Blind Test)'))
 
-    if 'lgb_optimized' in selected_models:
-        traces.append(go.Scatter(x=x_axis, y=re_lgb_preds, mode='lines', name='Optimized LightGBM'))
+        if model == 'lgb_default_blind_test':
+            fig.add_trace(go.Scatter(x=x_axis_blind_test, y=lgb_blind_test_preds, mode='lines', name='Default LightGBM (Blind Test)'))
 
-    # Define figure layout
-    figure = {
-        'data': traces,
-        'layout': go.Layout(
-            title="Model Predictions",
-            xaxis={'title': 'Data Points'},
-            yaxis={'title': 'Predicted Values'},
-            template="plotly_dark"
-        )
-    }
-    return figure
+        if model == 'xgb_optimized':
+            fig.add_trace(go.Scatter(x=x_axis_blind_test, y=re_xgb_blind_test_preds, mode='lines', name='Optimized XGBoost'))
+
+        if model == 'lgb_optimized':
+            fig.add_trace(go.Scatter(x=x_axis_blind_test, y=re_lgb_blind_test_preds, mode='lines', name='Optimized LightGBM'))
+
+    # Add the actual values for comparison, if applicable
+    fig.add_trace(go.Scatter(
+        x=x_axis_blind_test, 
+        y=combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]['NET Claims Incurred'], 
+        mode='lines', 
+        name='Actual', 
+        line=dict(color='white', dash='dot')
+    ))
+
+    # Update the layout for the figure
+    fig.update_layout(
+        title="Model Predictions",
+        xaxis_title='Date',
+        yaxis_title='NET Claims Incurred',
+        template="plotly_dark"
+    )
+
+    return fig
+
+
 
 
 

@@ -19,28 +19,19 @@ def convert_quarter_to_date(quarter_str):
         year, quarter = quarter_str.split()
         year = int(year)
         quarter_mapping = {'Q1': 1, 'Q2': 4, 'Q3': 7, 'Q4': 10}
-        return pd.Timestamp(year=year, month=quarter_mapping[quarter], day=1) #.strftime('%Y-%m-%d')
+        return pd.Timestamp(year=year, month=quarter_mapping[quarter], day=1)
     except Exception as e:
         print(f"Conversion error with value: {quarter_str} -> {e}")
         return pd.NaT  # Return NaT for invalid formats
 
 def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
-    # for content, filename in zip(contents, filenames):
-    #     country_name = filename.split('.')[0]
-    #     content_type, content_string = content.split(',')
-    #     decoded = pd.read_csv(StringIO(content_string))
-
-    #     if country_name in existing_dataframes:
-    #         existing_dataframes[f"{country_name}_new"] = decoded
-    #     else:
-    #         existing_dataframes[country_name] = decoded
-
+    
     for name, df in existing_dataframes.items():
         df.columns = df.columns.str.strip()
         print("give me value ",df.columns)
         
         for col in df.select_dtypes(include='object').columns:
-            if 'date' not in col.lower(): # pd.api.types.is_datetime64_any_dtype(df[col]):
+            if 'date' not in col.lower(): 
                 try:
                     df[col] = pd.to_numeric(df[col].str.replace(' ', '').str.replace(',', ''), errors='coerce')
                 except Exception:
@@ -61,12 +52,12 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
     combined_df = pd.DataFrame()
     for country, df in existing_dataframes.items():
         df['Country'] = country
-        combined_df = pd.concat([combined_df, df], axis=0) #, ignore_index=True
+        combined_df = pd.concat([combined_df, df], axis=0) 
 
-    le = LabelEncoder()
-    combined_df['Country'] = le.fit_transform(combined_df['Country'])
+    # le = LabelEncoder()
+    # combined_df['Country'] = le.fit_transform(combined_df['Country'])
 
-    numeric_columns = combined_df.select_dtypes(include='float64').columns #.tolist()
+    numeric_columns = combined_df.select_dtypes(include='float64').columns 
     lagged_dataframes = [combined_df]  # list to store the main DF and lagged columns
     #print('numeric col', numeric_columns)
     #print('i want this', combined_df['NET Premiums Earned'].dtype)
@@ -74,9 +65,7 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
     for col in numeric_columns:
         for lag in range(1, 9):
             combined_df[f'{col}_Lag{lag}'] = combined_df.groupby('Country')[col].shift(lag)
-            # lagged_df = combined_df[numeric_columns].groupby('Country').shift(lag)
-            # lagged_df = lagged_df.add_suffix(f"_Lag{lag}")
-            # lagged_dataframes.append(lagged_df)
+            
 
 
     # Extract Year and Quarter if 'Date' is properly formatted

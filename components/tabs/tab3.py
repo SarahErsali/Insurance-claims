@@ -1,8 +1,5 @@
 from dash import dcc, html
 import plotly.graph_objs as go
-# import matplotlib
-# matplotlib.use('Agg')  # Switch to a non-interactive backend
-
 
 def render_tab3():
     return html.Div([
@@ -15,7 +12,7 @@ def render_tab3():
         }),
 
         html.P(
-            "The line plot shows the predictions of various models—XGBoost, LightGBM, ARIMA, Moving Average, and their optimized versions—"
+            "The line plot shows the predictions of various models—XGBoost, LightGBM, and their optimized versions—"
             "against the actual values for 'Claims Incurred' over a period. The dotted black line represents the actual observed values, "
             "while the colored lines show the predictions of the models.",
             style={
@@ -36,38 +33,28 @@ def render_tab3():
                 html.Span("LightGBM: ", style={'fontWeight': 'bold'}),
                 "LightGBM appears less stable, with larger prediction errors in regions with moderate claim variations."
             ], style={'fontSize': '16px', 'textAlign': 'left', 'lineHeight': '2'}),
-            
-            # html.Li([
-            #     html.Span("ARIMA: ", style={'fontWeight': 'bold'}),
-            #     "ARIMA performs better in regions where actual values are relatively stable."
-            # ], style={'fontSize': '16px', 'textAlign': 'left', 'lineHeight': '2'}),
-            
-            # html.Li([
-            #     html.Span("Moving Average: ", style={'fontWeight': 'bold'}),
-            #     "The Moving Average model shows a smoother pattern, struggling with capturing sudden shifts or spikes."
-            # ], style={'fontSize': '16px', 'textAlign': 'left', 'lineHeight': '2'})
         ], style={'textAlign': 'left', 'marginBottom': '2.5cm'}),
 
         # Instructions for model selection dropdown
-        html.P("Select the models you would like to evaluate", style={
+        html.P("Select the models and datasets (Validation or Blind Test) you would like to evaluate", style={
             'textAlign': 'left', 
             'fontSize': '20px', 
             'marginTop': '4px', 
             'marginBottom': '5px'
         }),
 
-        # Updated dropdown with additional options for default and optimized models
+        # Updated dropdown with options for each combination of default and optimized models on validation and blind test
         dcc.Dropdown(
             id='model-dropdown-prediction',
             options=[
-                {'label': 'Default XGBoost', 'value': 'xgb_default'},
+                {'label': 'Default XGBoost (Validation)', 'value': 'xgb_default_val'},
+                {'label': 'Default XGBoost (Blind Test)', 'value': 'xgb_default_blind_test'},
                 {'label': 'Optimized XGBoost', 'value': 'xgb_optimized'},
-                {'label': 'Default LightGBM', 'value': 'lgb_default'},
+                {'label': 'Default LightGBM (Validation)', 'value': 'lgb_default_val'},
+                {'label': 'Default LightGBM (Blind Test)', 'value': 'lgb_default_blind_test'},
                 {'label': 'Optimized LightGBM', 'value': 'lgb_optimized'},
-                # {'label': 'ARIMA', 'value': 'arima'},
-                # {'label': 'Moving Average', 'value': 'moving_average'}
             ],
-            value=['xgb_default', 'lgb_default'],  # Set default selections
+            value=['xgb_default_val', 'lgb_default_val'],  # Set default selections
             multi=True,
             style={
                 'width': '500px',

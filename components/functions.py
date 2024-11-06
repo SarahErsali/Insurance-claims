@@ -20,43 +20,54 @@ import os
 
 def train_default_models(combined_df):    
     target_column = 'NET Claims Incurred'
-    train_start, train_end = "2016-07-01", "2020-12-31"
-    blind_test_start, blind_test_end = "2023-01-01", "2024-03-31"
-
-    train_data = combined_df[(combined_df['Date'] >= train_start) & (combined_df['Date'] <= train_end)]
-    blind_test_data = combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]
-
-    X_train = train_data.drop(columns=[target_column, 'Date'])
-    y_train = train_data[target_column]
-    X_blind_test = blind_test_data.drop(columns=[target_column, 'Date'])
-
-    xgb_model = XGBRegressor()
-    xgb_model.fit(X_train, y_train)
-    xgb_blind_test_preds = xgb_model.predict(X_blind_test)
-    
-    lgb_model = LGBMRegressor()
-    lgb_model.fit(X_train, y_train)
-    lgb_blind_test_preds = lgb_model.predict(X_blind_test)
-    
-    return xgb_blind_test_preds, lgb_blind_test_preds
-
-#----------------------------------- Tune and Train Optimized Models -----------------------------------
-
-def train_optimized_models(combined_df, n_trials=20):
-    target_column = 'NET Claims Incurred'
-    train_start, train_end = "2016-07-01", "2020-12-31"
-    val_start, val_end = "2021-01-01", "2022-12-31"
-    blind_test_start, blind_test_end = "2023-01-01", "2024-03-31"
+    train_start, train_end =  "2016-07-01", "2021-12-31" 
+    val_start, val_end = "2022-01-01", "2023-03-31"
+    blind_test_start, blind_test_end = "2023-04-01", "2024-03-31" 
 
     train_data = combined_df[(combined_df['Date'] >= train_start) & (combined_df['Date'] <= train_end)]
     val_data = combined_df[(combined_df['Date'] >= val_start) & (combined_df['Date'] <= val_end)]
     blind_test_data = combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]
 
-    X_train = train_data.drop(columns=[target_column, 'Date'])
+    target_column = 'NET Claims Incurred'
+    X_train = train_data.drop(columns=[target_column, 'Date', 'Country'])
     y_train = train_data[target_column]
-    X_val = val_data.drop(columns=[target_column, 'Date'])
+
+    X_val = val_data.drop(columns=[target_column, 'Date', 'Country'])
     y_val = val_data[target_column]
-    X_blind_test = blind_test_data.drop(columns=[target_column, 'Date'])
+
+    X_blind_test = blind_test_data.drop(columns=[target_column, 'Date', 'Country'])
+    y_blind_test = blind_test_data[target_column]
+
+    xgb_model = XGBRegressor()
+    xgb_model.fit(X_train, y_train)
+    xgb_val_preds = xgb_model.predict(X_val)
+    xgb_blind_test_preds = xgb_model.predict(X_blind_test)
+    
+    lgb_model = LGBMRegressor()
+    lgb_model.fit(X_train, y_train)
+    lgb_val_preds = lgb_model.predict(X_val)
+    lgb_blind_test_preds = lgb_model.predict(X_blind_test)
+    
+    return xgb_val_preds, xgb_blind_test_preds, lgb_val_preds, lgb_blind_test_preds
+
+#----------------------------------- Tune and Train Optimized Models -----------------------------------
+
+def train_optimized_models(combined_df, n_trials=20):
+    target_column = 'NET Claims Incurred'
+    train_start, train_end = "2016-07-01", "2021-12-31"
+    val_start, val_end = "2022-01-01", "2023-03-31"  
+    blind_test_start, blind_test_end = "2023-04-01", "2024-03-31" 
+
+    train_data = combined_df[(combined_df['Date'] >= train_start) & (combined_df['Date'] <= train_end)]
+    val_data = combined_df[(combined_df['Date'] >= val_start) & (combined_df['Date'] <= val_end)]
+    blind_test_data = combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]
+
+    X_train = train_data.drop(columns=[target_column, 'Date', 'Country'])
+    y_train = train_data[target_column]
+    X_val = val_data.drop(columns=[target_column, 'Date', 'Country'])
+    y_val = val_data[target_column]
+    X_blind_test = blind_test_data.drop(columns=[target_column, 'Date', 'Country'])
+    y_blind_test = blind_test_data[target_column]
 
     def xgb_objective(trial):
         params = {
@@ -95,11 +106,11 @@ def train_optimized_models(combined_df, n_trials=20):
 
     # Run Optuna optimization
     xgb_study = optuna.create_study(direction='minimize')
-    xgb_study.optimize(xgb_objective, n_trials=n_trials)
+    xgb_study.optimize(xgb_objective, n_trials=20)
     best_xgb_params = xgb_study.best_params
 
     lgb_study = optuna.create_study(direction='minimize')
-    lgb_study.optimize(lgb_objective, n_trials=n_trials)
+    lgb_study.optimize(lgb_objective, n_trials=20)
     best_lgb_params = lgb_study.best_params
 
     X_combined = pd.concat([X_train, X_val])
