@@ -8,7 +8,7 @@ def render_tab1():
             style={'textAlign': 'left', 'fontSize': '18px', 'marginBottom': '20px'}
         ),
 
-        # File Upload Section with adjusted alignment
+        # File Upload Section
         html.Div([
             dcc.Upload(
                 id='upload-data',
@@ -20,6 +20,10 @@ def render_tab1():
 
         # Data table to display the processed data
         html.Div(id='processed-data-table', style={'marginTop': '20px'}),
+
+        # Generate results button and status output
+        html.Button('Generate Results', id='generate-button', style={'marginTop': '20px'}),
+        html.Div(id='results-generation-status', style={'marginTop': '10px', 'fontWeight': 'bold', 'color': 'green'}),
     ], style={
         'paddingTop': '2cm',
         'paddingLeft': '3cm',

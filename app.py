@@ -16,7 +16,11 @@ from components.tabs.tab5 import render_tab5
 from components.data import load_and_process_uploaded_data
 import base64
 from io import StringIO
-from components.functions import train_default_models, train_optimized_models
+#from components.functions import train_default_models, train_optimized_models
+from components.functions import get_or_generate_results
+import joblib
+import os
+
 
 
 # -------------------- Initialize the app --------------------------------
@@ -110,70 +114,109 @@ def process_uploaded_data(contents, filenames):
 
     except Exception as e:
         return f"An error occurred during processing: {e}", html.Div()
+    
 
-# --------------------- Callback for ML Models predictions ---------------------
+
+
+# ------------------ Generate results ----------------------------------------------------------------
+
 
 @app.callback(
-    Output('model-comparison-graph', 'figure'),
-    Input('model-dropdown-prediction', 'value')
+    Output('results-generation-status', 'children'),
+    Input('generate-button', 'n_clicks'),
+    prevent_initial_call=True
 )
-def update_model_predictions(models_selected):
-    global combined_df  # Access the global combined_df variable
 
-    # Check if combined_df has been processed and is available
-    if combined_df is None:
-        return go.Figure()  # Return an empty figure if data is not yet available
+def generate_and_save_results(n_clicks):
+    print("Generate button clicked")  # For debugging
 
-    # Train and get predictions for the selected models
-    xgb_val_preds, xgb_blind_test_preds, lgb_val_preds, lgb_blind_test_preds = train_default_models(combined_df)
-    re_xgb_blind_test_preds, re_lgb_blind_test_preds, _, _ = train_optimized_models(combined_df)
+    global combined_df 
 
-    # Define the x-axis for validation and blind test periods
-    val_start, val_end = "2022-01-01", "2023-03-31"
-    blind_test_start, blind_test_end = "2023-04-01", "2024-03-31"
-    x_axis_val = pd.date_range(start=val_start, end=val_end, freq='QE')
-    x_axis_blind_test = pd.date_range(start=blind_test_start, end=blind_test_end, freq='QE')
+    # Check if `combined_df` has been processed and exists
+    if 'combined_df' not in globals() or combined_df is None:
+        return "No processed data available. Please upload your data first."
 
-    fig = go.Figure()
+    results = get_or_generate_results(combined_df)
+    return "Results have been generated successfully." if results else "Failed to generate results."
 
-    # Loop through selected models and add traces accordingly
-    for model in models_selected:
-        if model == 'xgb_default_val':
-            fig.add_trace(go.Scatter(x=x_axis_val, y=xgb_val_preds, mode='lines', name='Default XGBoost (Validation)'))
+
+
+
+
+
+
+# # --------------------- Callback for ML Models predictions ---------------------
+
+# @app.callback(
+#     Output('model-comparison-graph', 'figure'),
+#     Input('model-dropdown-prediction', 'value')
+# )
+# def update_model_predictions(models_selected):
+#     global combined_df  # Access the global combined_df variable
+
+#     # Check if combined_df has been processed and is available
+#     if combined_df is None:
+#         return go.Figure()  # Return an empty figure if data is not yet available
+
+#     # Train and get predictions for the selected models
+#     xgb_val_preds, xgb_blind_test_preds, lgb_val_preds, lgb_blind_test_preds = train_default_models(combined_df)
+#     re_xgb_blind_test_preds, re_lgb_blind_test_preds, _, _ = train_optimized_models(combined_df)
+
+#     # Define the x-axis for validation and blind test periods
+#     val_start, val_end = "2022-01-01", "2023-03-31"
+#     blind_test_start, blind_test_end = "2023-04-01", "2024-03-31"
+#     x_axis_val = pd.date_range(start=val_start, end=val_end, freq='QE')
+#     x_axis_blind_test = pd.date_range(start=blind_test_start, end=blind_test_end, freq='QE')
+
+#     fig = go.Figure()
+
+#     # Loop through selected models and add traces accordingly
+#     for model in models_selected:
+#         if model == 'xgb_default_val':
+#             fig.add_trace(go.Scatter(x=x_axis_val, y=xgb_val_preds, mode='lines', name='Default XGBoost (Validation)'))
         
-        if model == 'lgb_default_val':
-            fig.add_trace(go.Scatter(x=x_axis_val, y=lgb_val_preds, mode='lines', name='Default LightGBM (Validation)'))
+#         if model == 'lgb_default_val':
+#             fig.add_trace(go.Scatter(x=x_axis_val, y=lgb_val_preds, mode='lines', name='Default LightGBM (Validation)'))
 
-        if model == 'xgb_default_blind_test':
-            fig.add_trace(go.Scatter(x=x_axis_blind_test, y=xgb_blind_test_preds, mode='lines', name='Default XGBoost (Blind Test)'))
+#         if model == 'xgb_default_blind_test':
+#             fig.add_trace(go.Scatter(x=x_axis_blind_test, y=xgb_blind_test_preds, mode='lines', name='Default XGBoost (Blind Test)'))
 
-        if model == 'lgb_default_blind_test':
-            fig.add_trace(go.Scatter(x=x_axis_blind_test, y=lgb_blind_test_preds, mode='lines', name='Default LightGBM (Blind Test)'))
+#         if model == 'lgb_default_blind_test':
+#             fig.add_trace(go.Scatter(x=x_axis_blind_test, y=lgb_blind_test_preds, mode='lines', name='Default LightGBM (Blind Test)'))
 
-        if model == 'xgb_optimized':
-            fig.add_trace(go.Scatter(x=x_axis_blind_test, y=re_xgb_blind_test_preds, mode='lines', name='Optimized XGBoost'))
+#         if model == 'xgb_optimized':
+#             fig.add_trace(go.Scatter(x=x_axis_blind_test, y=re_xgb_blind_test_preds, mode='lines', name='Optimized XGBoost'))
 
-        if model == 'lgb_optimized':
-            fig.add_trace(go.Scatter(x=x_axis_blind_test, y=re_lgb_blind_test_preds, mode='lines', name='Optimized LightGBM'))
+#         if model == 'lgb_optimized':
+#             fig.add_trace(go.Scatter(x=x_axis_blind_test, y=re_lgb_blind_test_preds, mode='lines', name='Optimized LightGBM'))
 
-    # Add the actual values for comparison, if applicable
-    fig.add_trace(go.Scatter(
-        x=x_axis_blind_test, 
-        y=combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]['NET Claims Incurred'], 
-        mode='lines', 
-        name='Actual', 
-        line=dict(color='white', dash='dot')
-    ))
+#     # Add the actual values for comparison, if applicable
+#     fig.add_trace(go.Scatter(
+#         x=x_axis_blind_test, 
+#         y=combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]['NET Claims Incurred'], 
+#         mode='lines', 
+#         name='Actual', 
+#         line=dict(color='white', dash='dot')
+#     ))
 
-    # Update the layout for the figure
-    fig.update_layout(
-        title="Model Predictions",
-        xaxis_title='Date',
-        yaxis_title='NET Claims Incurred',
-        template="plotly_dark"
-    )
+#     # Update the layout for the figure
+#     fig.update_layout(
+#         title="Model Predictions",
+#         xaxis_title='Date',
+#         yaxis_title='NET Claims Incurred',
+#         template="plotly_dark"
+#     )
 
-    return fig
+#     return fig
+
+
+
+
+
+
+
+
+
 
 
 
