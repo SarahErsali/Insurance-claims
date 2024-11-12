@@ -98,7 +98,7 @@ def process_uploaded_data(contents, filenames):
         
         # Process data and store in the global combined_df variable
         combined_df = load_and_process_uploaded_data(contents, filenames, uploaded_data)
-        status_message = "Data processing complete. Displaying processed data below."
+        status_message = "✓ Data processing complete. Displaying processed data below."
 
         if isinstance(combined_df, pd.DataFrame):
             table = dash_table.DataTable(
@@ -137,7 +137,7 @@ def generate_and_save_results(n_clicks):
         return "No processed data available. Please upload your data first."
 
     results = get_or_generate_results(combined_df)
-    return "Results have been generated successfully." if results else "Failed to generate results."
+    return "✓ Results have been generated successfully." if results else "Failed to generate results."
 
 
 

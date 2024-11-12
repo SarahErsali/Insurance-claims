@@ -15,7 +15,7 @@ def render_tab1():
                 children=html.Button('Upload Files', style={'cursor': 'pointer'}),
                 multiple=True
             ),
-            html.Div(id='upload-status', style={'marginTop': '10px'})
+            html.Div(id='upload-status', style={'marginTop': '10px', 'fontWeight': 'bold', 'color': 'green'})
         ], style={'textAlign': 'left', 'paddingLeft': '0px'}),
 
         # Data table to display the processed data

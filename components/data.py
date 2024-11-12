@@ -28,7 +28,7 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
     
     for name, df in existing_dataframes.items():
         df.columns = df.columns.str.strip()
-        print("give me value ",df.columns)
+        print("Columns for country:", name, df.columns)
         
         for col in df.select_dtypes(include='object').columns:
             if 'date' not in col.lower(): 
@@ -37,7 +37,7 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
                 except Exception:
                     continue
 
-        # Explicitly check and apply the quarter-to-date conversion
+        # Apply the quarter-to-date conversion
         if 'Date' in df.columns.tolist():
             print(f"Before conversion, 'Date' sample values in {name}: {df['Date'].head()}")
             df['Date'] = df['Date'].apply(lambda x: convert_quarter_to_date(x) if isinstance(x, str) else x)
@@ -45,9 +45,19 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
         else:
             print(f"No 'Date' column found in {name}.")
 
+        # Fill NaNs with mean for numeric columns
         for col in df.select_dtypes(include='float64').columns:
             if df[col].isnull().any():
+                print(f"Filling NaNs in column {col} with mean for {name}")
                 df[col] = df[col].fillna(df[col].mean())
+
+        # Additional check for Sweden to ensure no NaNs remain
+        if name == 'Sweden':
+            for col in df.select_dtypes(include='float64').columns:
+                if df[col].isnull().any():
+                    print(f"Warning: NaNs still present in column '{col}' for Sweden even after filling with mean.")
+                else:
+                    print(f"No NaNs in column '{col}' for Sweden after mean filling.")
 
     combined_df = pd.DataFrame()
     for country, df in existing_dataframes.items():
@@ -73,10 +83,18 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
         combined_df['Year'] = combined_df['Date'].dt.year
         combined_df['Quarter'] = combined_df['Date'].dt.quarter
     else:
+        print("Warning: 'Date' column not in expected datetime format after conversion.")
         combined_df['Year'] = np.nan
         combined_df['Quarter'] = np.nan
 
-    combined_df = combined_df.groupby('Country').apply(lambda group: group.ffill().bfill()).reset_index(drop=True)
+    combined_df = combined_df.reset_index(drop=True).ffill().bfill().reset_index(drop=True)
+
+    #combined_df = combined_df.groupby('Country').apply(lambda group: group.ffill().bfill()).reset_index(drop=True)
+
+    # Debug check for any remaining NaNs after processing
+    if combined_df.isnull().any().any():
+        print("Warning: NaNs detected in combined_df after preprocessing.")
+        print(combined_df.isnull().sum())
 
     return combined_df
 
