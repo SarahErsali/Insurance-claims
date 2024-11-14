@@ -1,7 +1,6 @@
 from io import StringIO
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import LabelEncoder
 from datetime import datetime
 
 
@@ -23,9 +22,10 @@ def convert_quarter_to_date(quarter_str):
     except Exception as e:
         print(f"Conversion error with value: {quarter_str} -> {e}")
         return pd.NaT  # Return NaT for invalid formats
+    
 
 def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
-    
+        
     for name, df in existing_dataframes.items():
         df.columns = df.columns.str.strip()
         print("Columns for country:", name, df.columns)
@@ -51,32 +51,19 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
                 print(f"Filling NaNs in column {col} with mean for {name}")
                 df[col] = df[col].fillna(df[col].mean())
 
-        # Additional check for Sweden to ensure no NaNs remain
-        if name == 'Sweden':
-            for col in df.select_dtypes(include='float64').columns:
-                if df[col].isnull().any():
-                    print(f"Warning: NaNs still present in column '{col}' for Sweden even after filling with mean.")
-                else:
-                    print(f"No NaNs in column '{col}' for Sweden after mean filling.")
 
     combined_df = pd.DataFrame()
     for country, df in existing_dataframes.items():
         df['Country'] = country
         combined_df = pd.concat([combined_df, df], axis=0) 
 
-    # le = LabelEncoder()
-    # combined_df['Country'] = le.fit_transform(combined_df['Country'])
 
     numeric_columns = combined_df.select_dtypes(include='float64').columns 
-    lagged_dataframes = [combined_df]  # list to store the main DF and lagged columns
-    #print('numeric col', numeric_columns)
-    #print('i want this', combined_df['NET Premiums Earned'].dtype)
 
     for col in numeric_columns:
         for lag in range(1, 9):
             combined_df[f'{col}_Lag{lag}'] = combined_df.groupby('Country')[col].shift(lag)
             
-
 
     # Extract Year and Quarter if 'Date' is properly formatted
     if 'Date' in combined_df.columns and pd.api.types.is_datetime64_any_dtype(combined_df['Date']):
@@ -87,16 +74,106 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
         combined_df['Year'] = np.nan
         combined_df['Quarter'] = np.nan
 
-    combined_df = combined_df.reset_index(drop=True).ffill().bfill().reset_index(drop=True)
+    combined_df = combined_df.groupby('Country').apply(lambda group: group.ffill().bfill()).reset_index(drop=True)
 
-    #combined_df = combined_df.groupby('Country').apply(lambda group: group.ffill().bfill()).reset_index(drop=True)
 
     # Debug check for any remaining NaNs after processing
     if combined_df.isnull().any().any():
         print("Warning: NaNs detected in combined_df after preprocessing.")
         print(combined_df.isnull().sum())
 
+    # # Add specific check for the target column
+    # if combined_df['NET Claims Incurred'].isnull().any():
+    #     print("Warning: NaNs detected in target column after preprocessing.")
+
     return combined_df
+
+
+
+def prepare_for_arima_ma(combined_df, target_column):
+    
+    # Extract only the Date and target columns
+    if 'Date' not in combined_df.columns or target_column not in combined_df.columns:
+        raise ValueError("The combined_df must contain 'Date' and target_column for ARIMA/MA modeling.")
+    
+    # Extract necessary columns
+    arima_df = combined_df[['Date', target_column]].copy()
+
+    # Drop rows with NaN in the target column
+    arima_df = arima_df.dropna(subset=[target_column])    
+
+    # Set Date as index (optional, based on ARIMA/MA requirements)
+    arima_df.set_index('Date', inplace=True)
+    
+    return arima_df
+
+
+
+
+# def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
+#     combined_df = pd.DataFrame()  # Initialize an empty DataFrame to store processed data
+    
+#     for country, df in existing_dataframes.items():
+#         df.columns = df.columns.str.strip()  # Clean column names
+#         print(f"Processing data for country: {country}")
+        
+#         # Convert object columns to numeric where possible
+#         for col in df.select_dtypes(include='object').columns:
+#             if 'date' not in col.lower(): 
+#                 try:
+#                     df[col] = pd.to_numeric(df[col].str.replace(' ', '').str.replace(',', ''), errors='coerce')
+#                 except Exception as e:
+#                     print(f"Error converting column {col} in {country}: {e}")
+#                     continue
+        
+#         # Convert 'YYYY Qn' format to datetime
+#         if 'Date' in df.columns:
+#             df['Date'] = df['Date'].apply(lambda x: convert_quarter_to_date(x) if isinstance(x, str) else x)
+#             print(f"Sample 'Date' values after conversion for {country}: {df['Date'].head()}")
+#         else:
+#             print(f"Warning: No 'Date' column found in {country}.")
+#             continue  # Skip further processing if 'Date' is missing
+
+#         # Fill NaNs for numeric columns with the column mean
+#         for col in df.select_dtypes(include='float64').columns:
+#             if df[col].isnull().any():
+#                 print(f"Filling NaNs in column '{col}' with mean for {country}.")
+#                 df[col] = df[col].fillna(df[col].mean())
+        
+#         # Generate lagged features specific to this country
+#         numeric_columns = df.select_dtypes(include='float64').columns
+#         for col in numeric_columns:
+#             for lag in range(1, 9):
+#                 df[f'{col}_Lag{lag}'] = df[col].shift(lag)
+        
+#         # Fill remaining NaNs with forward/backward filling after creating lagged features
+#         df = df.ffill().bfill()
+        
+#         # Add a 'Country' column and append the cleaned data to combined_df
+#         df['Country'] = country
+#         combined_df = pd.concat([combined_df, df], axis=0)
+
+#     # Extract Year and Quarter from the 'Date' column
+#     if 'Date' in combined_df.columns and pd.api.types.is_datetime64_any_dtype(combined_df['Date']):
+#         combined_df['Year'] = combined_df['Date'].dt.year
+#         combined_df['Quarter'] = combined_df['Date'].dt.quarter
+#     else:
+#         print("Warning: 'Date' column not in expected datetime format.")
+#         combined_df['Year'] = np.nan
+#         combined_df['Quarter'] = np.nan
+
+#     # Debug checks for remaining NaNs
+#     if combined_df.isnull().any().any():
+#         print("Warning: NaNs detected in combined_df after preprocessing.")
+#         print(combined_df.isnull().sum())
+
+#     # Check for NaNs in the target column
+#     if combined_df['NET Claims Incurred'].isnull().any():
+#         print("Warning: NaNs detected in the target column after preprocessing.")
+
+#     return combined_df
+
+
 
 
 

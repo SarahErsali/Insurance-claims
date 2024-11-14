@@ -16,7 +16,7 @@ matplotlib.use('Agg')  # Switch to a non-interactive backend
 import matplotlib.pyplot as plt
 import os
 import joblib
-#from components.data import convert_quarter_to_date, load_and_process_uploaded_data
+from components.data import prepare_for_arima_ma
 
 
 
@@ -26,13 +26,11 @@ import joblib
 
 
 def split_data(combined_df, train_start, train_end, val_start, val_end, blind_test_start, blind_test_end, target_column):
-    #print(f"Splitting data with train range {train_start} to {train_end}, validation range {val_start} to {val_end}, and test range {blind_test_start} to {blind_test_end}")
 
     train_data = combined_df[(combined_df['Date'] >= train_start) & (combined_df['Date'] <= train_end)]
     val_data = combined_df[(combined_df['Date'] >= val_start) & (combined_df['Date'] <= val_end)]
     blind_test_data = combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]
 
-    #print(f"Training data size: {train_data.shape[0]}, Validation data size: {val_data.shape[0]}, Blind test data size: {blind_test_data.shape[0]}")
 
     X_train = train_data.drop(columns=[target_column, 'Date', 'Country'])
     y_train = train_data[target_column]
@@ -89,7 +87,11 @@ def tune_model(model_class, X_train, y_train, X_val, y_val, trial_params):
             if 'num_leaves' in trial_params:
                 params['num_leaves'] = trial.suggest_int('num_leaves', 20, 50)
         
-            print("Trial parameters generated:", params)
+            #print("Trial parameters generated:", params)
+
+            # Dynamically add verbose=-1 if the model is LightGBM to suppress repetative warnings in the console
+            if model_class.__name__ == 'LGBMClassifier' or model_class.__name__ == 'LGBMRegressor':
+                params['verbose'] = -1
         
             # Create and train model with these parameters
             model = model_class(**params)
@@ -102,7 +104,7 @@ def tune_model(model_class, X_train, y_train, X_val, y_val, trial_params):
             raise e  # Re-raise to capture Optuna logging
 
     # Check the initial trial_params input
-    print("Trial parameters received:", trial_params)
+    #print("Trial parameters received:", trial_params)
 
     study = optuna.create_study(direction='minimize')
     study.optimize(objective, n_trials=20)
@@ -114,6 +116,10 @@ def tune_model(model_class, X_train, y_train, X_val, y_val, trial_params):
 
 
 def retrain_and_evaluate(model_class, best_params, X_combined, y_combined, X_blind_test, y_blind_test):
+    # Dynamically add verbose=-1 if the model is LightGBM to suppress repetative warnings in the console
+    if model_class.__name__ == 'LGBMClassifier' or model_class.__name__ == 'LGBMRegressor':
+        best_params['verbose'] = -1
+
     model = model_class(**best_params)
     model.fit(X_combined, y_combined)
     test_preds = model.predict(X_blind_test)
@@ -130,61 +136,135 @@ def retrain_and_evaluate(model_class, best_params, X_combined, y_combined, X_bli
 
 # ----------------------------------- Developing Time Series Model -----------------------------------------
 
+def train_arima_model(y_combined, blind_test_data, forecast_steps, max_p=5, max_q=5, max_d=2):
+    """
+    Train an ARIMA model on the provided target series and forecast future values.
 
-def train_arima_model(y_train, forecast_steps, max_p=5, max_q=5, max_d=2):
-    # Ensure y_train has a simple, monotonic index for ARIMA compatibility
-    y_train = y_train.reset_index(drop=True)
+    Args:
+        y_combined (pd.Series): Combined target time series (train + validation) for ARIMA training.
+        blind_test_data (pd.Series): Target series for the blind test set.
+        forecast_steps (int): Number of future steps to forecast.
+        max_p (int): Maximum order for the AR term.
+        max_q (int): Maximum order for the MA term.
+        max_d (int): Maximum order for differencing.
 
-    arima_params_model = auto_arima(
-        y_train, seasonal=False, stepwise=True, trace=False, 
-        error_action='ignore', max_p=max_p, max_q=max_q, max_d=max_d
-    )
-    best_params = arima_params_model.order
+    Returns:
+        tuple: (ARIMA model, blind test forecast array, future forecast array)
+    """
+    # Ensure y_combined has no NaN values
+    if y_combined.isnull().any():
+        print("Warning: NaN values detected in y_combined. Please ensure it's cleaned before passing to ARIMA.")
+        return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
 
-    arima_model = ARIMA(y_train, order=best_params)
+    if len(y_combined) < max_p + max_d + max_q + 1:
+        print("Warning: Insufficient data points for ARIMA model fitting.")
+        return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
+
     try:
+        # Automatically determine best ARIMA parameters
+        arima_params_model = auto_arima(
+            y_combined, seasonal=False, stepwise=True, trace=False,
+            error_action='ignore', max_p=max_p, max_q=max_q, max_d=max_d
+        )
+        best_params = arima_params_model.order
+
+        arima_model = ARIMA(y_combined, order=best_params)
         arima_model_fitted = arima_model.fit()
+
+        arima_forecast = arima_model_fitted.forecast(steps=len(blind_test_data))
+        future_arima_forecast = arima_model_fitted.forecast(steps=forecast_steps)
+
+        return arima_model_fitted, arima_forecast, future_arima_forecast
     except Exception as e:
-        print(f"Warning: ARIMA model fitting failed: {e}")
-        return None, np.array([])  # Return empty forecast if fitting fails
+        print(f"Warning: ARIMA model fitting or forecasting failed: {e}")
+        return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)  # Return NaN forecast if fitting fails
+    
+
+
+
+def train_ma_model(y_combined, blind_test_data, window, forecast_steps):
+    """
+    Train a simple Moving Average (MA) model on the provided target series and forecast future values.
+
+    Args:
+        y_combined (pd.Series): Combined target time series (train + validation) for MA training.
+        blind_test_data (pd.Series): Target series for the blind test set.
+        window (int): Rolling window size for the moving average.
+        forecast_steps (int): Number of future steps to forecast.
+
+    Returns:
+        tuple: (Moving Average series, blind test forecast array, future forecast array)
+    """
+    # Ensure y_combined is valid
+    if y_combined.isnull().any():
+        print("Warning: NaN values detected in y_combined. Please ensure it's cleaned before passing to MA model.")
+        return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
+
+    if len(y_combined) < window:
+        print(f"Warning: Not enough data points to calculate moving average with window={window}.")
+        return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
 
     try:
-        forecast = arima_model_fitted.forecast(steps=forecast_steps)
+        # Calculate the rolling mean
+        ma_model = y_combined.rolling(window=window).mean()
+
+        # Ensure there's enough data in the rolling mean. Forecast for blind test: Use the last known rolling mean
+        if len(ma_model.dropna()) < 1:
+            print("Warning: Not enough non-NaN values in the rolling mean.")
+            return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
+
+        # Use the last rolling mean for blind test and future forecast
+        last_known_mean = ma_model.dropna().iloc[-1]
+        ma_forecast = np.full(len(blind_test_data), last_known_mean)  # Extend with last rolling mean
+        future_ma_forecast = np.full(forecast_steps, last_known_mean)  # Extend future steps with the same mean
+
+        return ma_model, ma_forecast, future_ma_forecast
     except Exception as e:
-        print(f"Warning: ARIMA forecast generation failed: {e}")
-        forecast = np.full(forecast_steps, np.nan)  # Fill with NaNs if forecast fails
-
-    # arima_model = ARIMA(y_train, order=best_params)
-    # arima_model_fitted = arima_model.fit()
-    
-    # forecast = arima_model_fitted.forecast(steps=forecast_steps).values.flatten()
-    
-    return arima_model_fitted, forecast
+        print(f"Warning: MA model calculation or forecasting failed: {e}")
+        return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
 
 
 
-def train_ma_model(y_train, window, forecast_steps):
-    # Compute the rolling mean (moving average)
-    ma_model = y_train.rolling(window=window).mean()
+# def train_arima_model(y_train, forecast_steps, max_p=5, max_q=5, max_d=2):
+#     # Ensure y_train has a simple, monotonic index for ARIMA compatibility
+#     y_train = y_train.reset_index(drop=True)
 
-    if len(ma_model.dropna()) < 1:
-        print("Warning: Not enough data to calculate initial moving average.")
-        return None, np.full(forecast_steps, np.nan)
+#     arima_params_model = auto_arima(
+#         y_train, seasonal=False, stepwise=True, trace=False, 
+#         error_action='ignore', max_p=max_p, max_q=max_q, max_d=max_d
+#     )
+#     best_params = arima_params_model.order
+
+#     arima_model = ARIMA(y_train, order=best_params)
+#     try:
+#         arima_model_fitted = arima_model.fit()
+#     except Exception as e:
+#         print(f"Warning: ARIMA model fitting failed: {e}")
+#         return None, np.array([])  # Return empty forecast if fitting fails
+
+#     try:
+#         forecast = arima_model_fitted.forecast(steps=forecast_steps)
+#     except Exception as e:
+#         print(f"Warning: ARIMA forecast generation failed: {e}")
+#         forecast = np.full(forecast_steps, np.nan)  # Fill with NaNs if forecast fails
+
     
-    # # Check if we have enough data after dropping NaNs due to rolling window
-    # if len(ma_model.dropna()) < forecast_steps:
-    #     print("Warning: Not enough data points to generate moving average forecast for all steps.")
-    
-    # Use the last known mean value to extend the forecast
-    forecast_value = ma_model.dropna().iloc[-1]  # Last value in moving average
-    forecast = np.full(forecast_steps, forecast_value)  # Extend this value into forecast period
-    
-    return ma_model, forecast
+#     return arima_model_fitted, forecast
+
+
 
 # def train_ma_model(y_train, window, forecast_steps):
+#     # Compute the rolling mean (moving average)
 #     ma_model = y_train.rolling(window=window).mean()
+
+#     if len(ma_model.dropna()) < 1:
+#         print("Warning: Not enough data to calculate initial moving average.")
+#         return None, np.full(forecast_steps, np.nan)
     
-#     forecast = ma_model.dropna().iloc[-forecast_steps:].values.flatten()
+    
+#     # Use the last known mean value to extend the forecast
+#     forecast_value = ma_model.dropna().iloc[-1]  # Last value in moving average
+#     forecast = np.full(forecast_steps, forecast_value)  # Extend this value into forecast period
     
 #     return ma_model, forecast
 
@@ -193,128 +273,139 @@ def train_ma_model(y_train, window, forecast_steps):
 
 # ----------------------------------- Model Evaluation on Each Country -----------------------------------------
 
+
 def evaluate_models_by_country(models, retrained_models, combined_df, target_column, val_start, val_end, blind_test_start, blind_test_end, y_combined):
     countries = combined_df['Country'].unique()
     results = {}
     arima_models = {}
     ma_models = {}
 
-
     for country in countries:
         print(f"\nEvaluating models for country: {country}")
         country_data = combined_df[combined_df['Country'] == country]
 
+        # Splitting data for the specific country
         (X_train_country, y_train_country), (X_val_country, y_val_country), (X_blind_test_country, y_blind_test_country) = split_data(
-            country_data, train_start="2016-07-01", train_end="2021-12-31", val_start=val_start, val_end=val_end, blind_test_start=blind_test_start, blind_test_end=blind_test_end, target_column=target_column
+            country_data, train_start="2016-07-01", train_end="2021-12-31", 
+            val_start=val_start, val_end=val_end, 
+            blind_test_start=blind_test_start, blind_test_end=blind_test_end, 
+            target_column=target_column
         )
 
-        #-------------------
-        # Debugging lengths of split data
-        print(f"Lengths for {country} - X_train: {len(X_train_country)}, y_train: {len(y_train_country)}, "
-              f"X_val: {len(X_val_country)}, y_val: {len(y_val_country)}, "
-              f"X_blind_test: {len(X_blind_test_country)}, y_blind_test: {len(y_blind_test_country)}")
-        
-        # Retrieve the combined training data for ARIMA and MA models
-        y_train_country_combined = y_combined[combined_df['Country'] == country].copy()
+        # # Retrieve the combined training data for ARIMA and MA models
+        # y_train_country_combined = y_combined[combined_df['Country'] == country].copy()
 
-        # Ensure Date is set as the index for ARIMA processing
-        if len(y_train_country_combined) != len(country_data['Date']):
-            print(f"Warning: Length mismatch for {country} - y_train_combined length: {len(y_train_country_combined)}, "
-                  f"country_data Date length: {len(country_data['Date'])}")
-            continue  # Skip this country due to mismatch
+        # # Aligning y_train_country_combined index with country_data['Date']
+        # y_train_country_combined.index = country_data['Date'].iloc[:len(y_train_country_combined)].values
 
-        # Aligning y_train_country_combined index with country_data['Date']
-        y_train_country_combined.index = country_data['Date'].iloc[:len(y_train_country_combined)]
-        
+        # if y_train_country_combined.isnull().any():
+        #     print(f"NaNs detected in y_train_country_combined for {country} after preprocessing. Attempting to fill NaNs.")
+        #     y_train_country_combined = y_train_country_combined.ffill().bfill()
 
-        #--------------------
-        
+        # if len(y_train_country_combined) != len(country_data['Date']):
+        #     print(f"Length mismatch for {country} after preprocessing. "
+        #           f"y_train_country_combined: {len(y_train_country_combined)}, country_data: {len(country_data['Date'])}")
+        #     continue  # Skip country if lengths cannot be reconciled
+
+
+        # Use prepare_for_arima_ma to clean the data for ARIMA and MA models
+        arima_df = prepare_for_arima_ma(country_data, target_column)
+        y_train_arima = arima_df[target_column][:len(y_train_country)]
+
 
         country_results = {}
 
+        # Evaluate Default Models
         for model_name, model in models.items():
-            val_preds = model.predict(X_val_country)
-            blind_test_preds = model.predict(X_blind_test_country)
+            try:
+                val_preds = model.predict(X_val_country)
+                blind_test_preds = model.predict(X_blind_test_country)
 
-            metrics = {
-                'validation': {
-                    'MAPE%': mean_absolute_percentage_error(y_val_country, val_preds) * 100,
-                    'Accuracy%': 100 - mean_absolute_percentage_error(y_val_country, val_preds) * 100,
-                    'Bias%': (np.mean(val_preds - y_val_country) / np.mean(y_val_country)) * 100
-                },
-                'blind_test': {
-                    'MAPE%': mean_absolute_percentage_error(y_blind_test_country, blind_test_preds) * 100,
-                    'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, blind_test_preds) * 100,
-                    'Bias%': (np.mean(blind_test_preds - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
+                metrics = {
+                    'validation': {
+                        'MAPE%': mean_absolute_percentage_error(y_val_country, val_preds) * 100,
+                        'Accuracy%': 100 - mean_absolute_percentage_error(y_val_country, val_preds) * 100,
+                        'Bias%': (np.mean(val_preds - y_val_country) / np.mean(y_val_country)) * 100
+                    },
+                    'blind_test': {
+                        'MAPE%': mean_absolute_percentage_error(y_blind_test_country, blind_test_preds) * 100,
+                        'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, blind_test_preds) * 100,
+                        'Bias%': (np.mean(blind_test_preds - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
+                    }
                 }
-            }
 
-            country_results[f"{model_name} Default"] = {
-                'metrics': metrics,
-                'validation_predictions': val_preds,
-                'blind_test_predictions': blind_test_preds
-            }
+                country_results[f"{model_name} Default"] = {
+                    'metrics': metrics,
+                    'validation_predictions': val_preds,
+                    'blind_test_predictions': blind_test_preds
+                }
+            except Exception as e:
+                print(f"Error evaluating {model_name} for {country}: {e}")
 
+        # Evaluate Retrained Models
         for model_name, model in retrained_models.items():
-            blind_test_preds = model.predict(X_blind_test_country)
+            try:
+                blind_test_preds = model.predict(X_blind_test_country)
 
-            metrics = {
+                metrics = {
+                    'blind_test': {
+                        'MAPE%': mean_absolute_percentage_error(y_blind_test_country, blind_test_preds) * 100,
+                        'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, blind_test_preds) * 100,
+                        'Bias%': (np.mean(blind_test_preds - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
+                    }
+                }
+
+                country_results[f"{model_name} Retrained"] = {
+                    'metrics': metrics,
+                    'blind_test_predictions': blind_test_preds
+                }
+            except Exception as e:
+                print(f"Error evaluating retrained model {model_name} for {country}: {e}")
+
+        # Evaluate ARIMA Model
+        try:
+            arima_model, arima_forecast = train_arima_model(
+                y_train=y_train_arima, 
+                forecast_steps=len(y_blind_test_country)
+            )
+
+            arima_models[country] = arima_model
+            arima_metrics = {
                 'blind_test': {
-                    'MAPE%': mean_absolute_percentage_error(y_blind_test_country, blind_test_preds) * 100,
-                    'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, blind_test_preds) * 100,
-                    'Bias%': (np.mean(blind_test_preds - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
+                    'MAPE%': mean_absolute_percentage_error(y_blind_test_country, arima_forecast) * 100,
+                    'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, arima_forecast) * 100,
+                    'Bias%': (np.mean(arima_forecast - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
                 }
             }
-
-            country_results[f"{model_name} Retrained"] = {
-                'metrics': metrics,
-                'blind_test_predictions': blind_test_preds
+            country_results['ARIMA'] = {
+                'metrics': arima_metrics,
+                'blind_test_predictions': arima_forecast
             }
-
-        #------------
-        #y_train_country = y_combined[combined_df['Country'] == country]
-
-        if y_train_country.empty:
-            print(f"Warning: y_train is empty for ARIMA for {country}. Skipping ARIMA/MA evaluation.")
-            continue
-        
-
-        try:
-            arima_model, arima_forecast = train_arima_model(y_train=y_train_country, forecast_steps=len(y_blind_test_country))
-            ma_model, ma_forecast = train_ma_model(y_train=y_train_country, window=4, forecast_steps=len(y_blind_test_country))
         except Exception as e:
-            print(f"ARIMA/MA model training failed for {country} due to error: {e}")
-            continue
+            print(f"ARIMA model evaluation failed for {country}: {e}")
 
-        # Store each country's ARIMA and MA models in their respective dictionaries
-        arima_models[country] = arima_model
-        ma_models[country] = ma_model
+        # Evaluate Moving Average Model
+        try:
+            ma_model, ma_forecast = train_ma_model(
+                y_train=y_train_arima, 
+                window=4, 
+                forecast_steps=len(y_blind_test_country)
+            )
 
-        # Store ARIMA and MA metrics
-        arima_metrics = {
-            'blind_test': {
-                'MAPE%': mean_absolute_percentage_error(y_blind_test_country, arima_forecast) * 100,
-                'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, arima_forecast) * 100,
-                'Bias%': (np.mean(arima_forecast - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
+            ma_models[country] = ma_model
+            ma_metrics = {
+                'blind_test': {
+                    'MAPE%': mean_absolute_percentage_error(y_blind_test_country, ma_forecast) * 100,
+                    'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, ma_forecast) * 100,
+                    'Bias%': (np.mean(ma_forecast - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
+                }
             }
-        }
-
-        ma_metrics = {
-            'blind_test': {
-                'MAPE%': mean_absolute_percentage_error(y_blind_test_country, ma_forecast) * 100,
-                'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, ma_forecast) * 100,
-                'Bias%': (np.mean(ma_forecast - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
+            country_results['Moving Average'] = {
+                'metrics': ma_metrics,
+                'blind_test_predictions': ma_forecast
             }
-        }
-
-        country_results['ARIMA'] = {
-            'metrics': arima_metrics,
-            'blind_test_predictions': arima_forecast
-        }
-        country_results['Moving Average'] = {
-            'metrics': ma_metrics,
-            'blind_test_predictions': ma_forecast
-        }
+        except Exception as e:
+            print(f"Moving Average model evaluation failed for {country}: {e}")
 
         results[country] = country_results
 
@@ -322,16 +413,283 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
 
 
 
+# def evaluate_models_by_country(models, retrained_models, combined_df, target_column, val_start, val_end, blind_test_start, blind_test_end, y_combined):
+#     countries = combined_df['Country'].unique()
+#     results = {}
+#     arima_models = {}
+#     ma_models = {}
+
+
+#     for country in countries:
+#         print(f"\nEvaluating models for country: {country}")
+#         country_data = combined_df[combined_df['Country'] == country]
+
+#         (X_train_country, y_train_country), (X_val_country, y_val_country), (X_blind_test_country, y_blind_test_country) = split_data(
+#             country_data, train_start="2016-07-01", train_end="2021-12-31", val_start=val_start, val_end=val_end, blind_test_start=blind_test_start, blind_test_end=blind_test_end, target_column=target_column
+#         )
+
+#         # Retrieve the combined training data for ARIMA and MA models
+#         y_train_country_combined = y_combined[combined_df['Country'] == country].copy()
+
+#         # Aligning y_train_country_combined index with country_data['Date']
+#         y_train_country_combined.index = country_data['Date'].iloc[:len(y_train_country_combined)].values
+
+#         if len(y_train_country_combined) != len(country_data['Date']):
+#             print(f"Adjusting length mismatch for {country} - y_train_combined length: {len(y_train_country_combined)}, "
+#                   f"country_data Date length: {len(country_data['Date'])}")
+#             # Fill missing indices or truncate to align lengths
+#             y_train_country_combined = y_train_country_combined.reindex(country_data['Date'])
+#             y_train_country_combined = y_train_country_combined.ffill().bfill()
+#             if y_train_country_combined.isnull().any():
+#                 print(f"Warning: NaNs still exist in y_train_combined after reindexing and filling for {country}.")
+#             #y_train_country_combined = y_train_country_combined.reindex(country_data['Date'], method='nearest').fillna(method='ffill').fillna(method='bfill')
+
+
+#         # #-------------------
+#         # # Debugging lengths of split data
+#         # print(f"Lengths for {country} - X_train: {len(X_train_country)}, y_train: {len(y_train_country)}, "
+#         #       f"X_val: {len(X_val_country)}, y_val: {len(y_val_country)}, "
+#         #       f"X_blind_test: {len(X_blind_test_country)}, y_blind_test: {len(y_blind_test_country)}")
+                
+#         country_results = {}
+
+#         for model_name, model in models.items():
+#             val_preds = model.predict(X_val_country)
+#             blind_test_preds = model.predict(X_blind_test_country)
+
+#             metrics = {
+#                 'validation': {
+#                     'MAPE%': mean_absolute_percentage_error(y_val_country, val_preds) * 100,
+#                     'Accuracy%': 100 - mean_absolute_percentage_error(y_val_country, val_preds) * 100,
+#                     'Bias%': (np.mean(val_preds - y_val_country) / np.mean(y_val_country)) * 100
+#                 },
+#                 'blind_test': {
+#                     'MAPE%': mean_absolute_percentage_error(y_blind_test_country, blind_test_preds) * 100,
+#                     'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, blind_test_preds) * 100,
+#                     'Bias%': (np.mean(blind_test_preds - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
+#                 }
+#             }
+
+#             country_results[f"{model_name} Default"] = {
+#                 'metrics': metrics,
+#                 'validation_predictions': val_preds,
+#                 'blind_test_predictions': blind_test_preds
+#             }
+
+#         for model_name, model in retrained_models.items():
+#             blind_test_preds = model.predict(X_blind_test_country)
+
+#             metrics = {
+#                 'blind_test': {
+#                     'MAPE%': mean_absolute_percentage_error(y_blind_test_country, blind_test_preds) * 100,
+#                     'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, blind_test_preds) * 100,
+#                     'Bias%': (np.mean(blind_test_preds - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
+#                 }
+#             }
+
+#             country_results[f"{model_name} Retrained"] = {
+#                 'metrics': metrics,
+#                 'blind_test_predictions': blind_test_preds
+#             }
+
+
+#         # Evaluate ARIMA and MA models
+#         arima_model, arima_forecast = train_arima_model(y_train=y_train_country_combined, forecast_steps=len(y_blind_test_country))
+#         ma_model, ma_forecast = train_ma_model(y_train=y_train_country_combined, window=4, forecast_steps=len(y_blind_test_country))
+
+#         arima_models[country] = arima_model
+#         ma_models[country] = ma_model
+
+#         arima_metrics = {
+#             'blind_test': {
+#                 'MAPE%': mean_absolute_percentage_error(y_blind_test_country, arima_forecast) * 100,
+#                 'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, arima_forecast) * 100,
+#                 'Bias%': (np.mean(arima_forecast - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
+#             }
+#         }
+
+#         ma_metrics = {
+#             'blind_test': {
+#                 'MAPE%': mean_absolute_percentage_error(y_blind_test_country, ma_forecast) * 100,
+#                 'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, ma_forecast) * 100,
+#                 'Bias%': (np.mean(ma_forecast - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
+#             }
+#         }
+
+#         country_results['ARIMA'] = {
+#             'metrics': arima_metrics,
+#             'blind_test_predictions': arima_forecast
+#         }
+#         country_results['Moving Average'] = {
+#             'metrics': ma_metrics,
+#             'blind_test_predictions': ma_forecast
+#         }
+
+#         results[country] = country_results
+
+#     return results, arima_models, ma_models
+
+
+
 
 # ---------------------------------- Back Testing ----------------------------------------------------------------
 
-# model_dicts is models
-# model_types is the dictionary defining each model's type
+
+def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
+    """
+    Run backtesting for all models (ML, ARIMA, MA) on the combined dataset.
+
+    Args:
+        model_dicts (list): List of model dictionaries (e.g., ML models, retrained models).
+        model_types (dict): Dictionary mapping model names to their types (e.g., 'xgb', 'arima', 'ma').
+        combined_df (pd.DataFrame): Combined dataset with all countries.
+        target_column (str): The target column for predictions.
+        cycles (int): Number of backtesting cycles.
+
+    Returns:
+        dict: Backtesting results for each country and model.
+    """
+    # Combine all models and types into one dictionary
+    all_models = {}
+    for model_dict in model_dicts:
+        all_models.update(model_dict)
+
+    countries = combined_df['Country'].unique()
+    backtesting_results = {}
+
+    for country in countries:
+        country_data = combined_df[combined_df['Country'] == country]
+
+        # Preprocess data for ARIMA/MA
+        arima_df = prepare_for_arima_ma(country_data, target_column)
+
+        model_results = {}
+        for model_name, model in all_models.items():
+            model_type = model_types[model_name]
+            backtest_metrics = backtest_model(country_data, arima_df, model, model_type, target_column, cycles=cycles)
+            model_results[model_name] = backtest_metrics
+
+        backtesting_results[country] = model_results
+
+    return backtesting_results
+
+
+def backtest_model(country_data, arima_df, model, model_type, target_column, window=24, test_size=12, cycles=3):
+    """
+    Perform backtesting for a single model (ML, ARIMA, MA) on a country's data.
+
+    Args:
+        country_data (pd.DataFrame): Full dataset for the specific country.
+        arima_df (pd.DataFrame): Preprocessed dataset for ARIMA/MA models.
+        model (object): The model to be backtested (e.g., ML, ARIMA, MA).
+        model_type (str): The type of the model ('xgb', 'arima', 'ma').
+        target_column (str): The target column for predictions.
+        window (int): Training window size.
+        test_size (int): Testing window size.
+        cycles (int): Number of backtesting cycles.
+
+    Returns:
+        dict: Metrics for each backtesting cycle.
+    """
+    cycle_metrics = {'bias': [], 'accuracy': [], 'mape': [], 'coc': []}
+    prev_cycle_preds = None
+
+    # Determine model type
+    is_ml_model = model_type in ['xgb', 'lgb']
+    is_arima_model = model_type == 'arima'
+    is_ma_model = model_type == 'ma'
+
+    # Pre-train ARIMA and MA models if applicable
+    if is_arima_model:
+        arima_model, arima_blind_test_forecast, _ = train_arima_model(
+            y_combined=arima_df[target_column], 
+            blind_test_data=country_data[target_column].iloc[window:], 
+            forecast_steps=test_size
+        )
+    elif is_ma_model:
+        ma_model, ma_blind_test_forecast, _ = train_ma_model(
+            y_combined=arima_df[target_column],
+            blind_test_data=country_data[target_column].iloc[window:],
+            window=4,
+            forecast_steps=test_size
+        )
+
+    for i in range(cycles):
+        b_train = country_data.iloc[i:i + window]
+        b_test = country_data.iloc[i + window:i + window + test_size]
+
+        b_X_train = b_train.drop([target_column, 'Date', 'Country'], axis=1, errors='ignore')
+        b_y_train = b_train[target_column]
+        b_X_test = b_test.drop([target_column, 'Date', 'Country'], axis=1, errors='ignore')
+        b_y_test = b_test[target_column]
+
+        if is_ml_model:
+            model.fit(b_X_train, b_y_train)
+            preds = model.predict(b_X_test)
+            
+        elif is_arima_model:
+            try:
+                preds = arima_blind_test_forecast[i:i + test_size]  # Use pre-trained ARIMA model for forecasting
+            except Exception as e:
+                print(f"ARIMA model forecasting failed: {e}")
+                preds = np.full(len(b_y_test), np.nan)
+
+
+        elif is_ma_model:
+            try:
+                preds = ma_blind_test_forecast[i:i + test_size]   # Use pre-trained MA model for forecasting
+            except Exception as e:
+                print(f"MA model forecasting failed: {e}")
+                preds = np.full(len(b_y_test), np.nan)
+
+        
+        # Ensure predictions align with test data
+        if len(preds) != len(b_y_test):
+            if len(preds) == 0:
+                # Handle empty predictions by filling with mean of training set
+                print("Warning: Predictions are empty. Filling with mean of training data.")
+                preds = np.full(len(b_y_test), b_y_train.mean())
+
+            elif len(preds) > len(b_y_test):
+                # Truncate predictions to match test set length
+                print("Warning: Predictions are longer than test set. Truncating to match length.")
+                preds = preds[:len(b_y_test)]
+
+            elif len(preds) < len(b_y_test):
+                # Extend predictions with the last value to match test set length
+                print("Warning: Predictions are shorter than test set. Padding with last prediction value.")
+                padding = [preds[-1]] * (len(b_y_test) - len(preds))
+                preds = np.append(preds, padding)
+
+
+        # Calculate metrics if predictions are valid
+        if len(preds) == len(b_y_test) and not np.isnan(preds).all():
+            bias = (np.mean(preds - b_y_test) / np.mean(b_y_test)) * 100
+            accuracy = 100 - mean_absolute_percentage_error(b_y_test, preds) * 100
+            mape = mean_absolute_percentage_error(b_y_test, preds) * 100
+
+            coc = ((np.mean(preds - prev_cycle_preds) / np.mean(prev_cycle_preds)) * 100
+                   if prev_cycle_preds is not None and len(preds) == len(prev_cycle_preds) else np.nan)
+
+            cycle_metrics['bias'].append(bias)
+            cycle_metrics['accuracy'].append(accuracy)
+            cycle_metrics['mape'].append(mape)
+            cycle_metrics['coc'].append(coc)
+            prev_cycle_preds = preds
+
+    return cycle_metrics
+
+
+
+# # model_dicts is models
+# # model_types is the dictionary defining each model's type
+
 
 # def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
 #     # Combine all models and types into one dictionary
 #     all_models = {}
-#     all_models.update(*model_dicts)  # Combine all models into one dictionary
+#     for model_dict in model_dicts:
+#         all_models.update(model_dict)  # Combine each model dictionary into all_models
 
 #     countries = combined_df['Country'].unique()
 #     backtesting_results = {}
@@ -348,30 +706,6 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
 #         backtesting_results[country] = model_results
 
 #     return backtesting_results
-
-def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
-    # Combine all models and types into one dictionary
-    all_models = {}
-    for model_dict in model_dicts:
-        all_models.update(model_dict)  # Combine each model dictionary into all_models
-
-    countries = combined_df['Country'].unique()
-    backtesting_results = {}
-
-    for country in countries:
-        country_data = combined_df[combined_df['Country'] == country]
-        
-        model_results = {}
-        for model_name, model in all_models.items():
-            model_type = model_types[model_name]  # Get the model type directly from model_types dictionary
-            backtest_metrics = backtest_model(country_data, model, model_type, cycles=cycles)  # Pass model_type directly to backtest_model
-            model_results[model_name] = backtest_metrics
-        
-        backtesting_results[country] = model_results
-
-    return backtesting_results
-
-
 
 
 
@@ -399,13 +733,27 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
 #             model.fit(b_X_train, b_y_train)
 #             preds = model.predict(b_X_test)
 #         elif is_arima_model:
-#             arima_cycle_model = ARIMA(b_y_train, order=model.order).fit()
-#             preds = arima_cycle_model.forecast(steps=len(b_y_test)).values
+#             try:
+#                 arima_cycle_model = ARIMA(b_y_train, order=model.order).fit()
+#                 preds = arima_cycle_model.forecast(steps=len(b_y_test)).values
+#             except Exception as e:
+#                 print(f"ARIMA model training/forecasting failed: {e}")
+#                 preds = np.full(len(b_y_test), np.nan)
 #         elif is_ma_model:
-#             preds = b_y_train.rolling(window=4).mean().iloc[-len(b_y_test):].dropna().values
+#             if len(b_y_train) >= 4:
+#                 ma_cycle = b_y_train.rolling(window=4).mean().iloc[-1]
+#                 preds = np.full(len(b_y_test), ma_cycle if not np.isnan(ma_cycle) else np.nan)
+#             else:
+#                 print("Warning: Insufficient data for MA prediction in this cycle.")
+#                 preds = np.full(len(b_y_test), np.nan)
 
+#         # Ensure predictions align with test data
+#         if len(preds) != len(b_y_test):
+#             print("Warning: Prediction and test length mismatch, skipping this cycle.")
+#             continue
 
-#         if len(preds) == len(b_y_test):
+#         # Calculate metrics if predictions are valid
+#         if len(preds) == len(b_y_test) and not np.isnan(preds).all():
 #             bias = (np.mean(preds - b_y_test) / np.mean(b_y_test)) * 100
 #             accuracy = 100 - mean_absolute_percentage_error(b_y_test, preds) * 100
 #             mape = mean_absolute_percentage_error(b_y_test, preds) * 100
@@ -420,65 +768,6 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
 #             prev_cycle_preds = preds
 
 #     return cycle_metrics
-
-def backtest_model(country_data, model, model_type, window=24, test_size=12, cycles=3):
-    cycle_metrics = {'bias': [], 'accuracy': [], 'mape': [], 'coc': []}
-    target_column = 'NET Claims Incurred'
-    prev_cycle_preds = None
-
-    # Pre-set the prediction approach based on model type
-    is_ml_model = model_type in ['xgb', 'lgb']
-    is_arima_model = model_type == 'arima'
-    is_ma_model = model_type == 'ma'
-
-    for i in range(cycles):
-        b_train = country_data.iloc[i:i + window]
-        b_test = country_data.iloc[i + window:i + window + test_size]
-
-        b_X_train = b_train.drop([target_column, 'Date', 'Country'], axis=1, errors='ignore')
-        b_y_train = b_train[target_column]
-        b_X_test = b_test.drop([target_column, 'Date', 'Country'], axis=1, errors='ignore')
-        b_y_test = b_test[target_column]
-
-        if is_ml_model:
-            model.fit(b_X_train, b_y_train)
-            preds = model.predict(b_X_test)
-        elif is_arima_model:
-            try:
-                arima_cycle_model = ARIMA(b_y_train, order=model.order).fit()
-                preds = arima_cycle_model.forecast(steps=len(b_y_test)).values
-            except Exception as e:
-                print(f"ARIMA model training/forecasting failed: {e}")
-                preds = np.full(len(b_y_test), np.nan)
-        elif is_ma_model:
-            if len(b_y_train) >= 4:
-                ma_cycle = b_y_train.rolling(window=4).mean().iloc[-1]
-                preds = np.full(len(b_y_test), ma_cycle if not np.isnan(ma_cycle) else np.nan)
-            else:
-                print("Warning: Insufficient data for MA prediction in this cycle.")
-                preds = np.full(len(b_y_test), np.nan)
-
-        # Ensure predictions align with test data
-        if len(preds) != len(b_y_test):
-            print("Warning: Prediction and test length mismatch, skipping this cycle.")
-            continue
-
-        # Calculate metrics if predictions are valid
-        if len(preds) == len(b_y_test) and not np.isnan(preds).all():
-            bias = (np.mean(preds - b_y_test) / np.mean(b_y_test)) * 100
-            accuracy = 100 - mean_absolute_percentage_error(b_y_test, preds) * 100
-            mape = mean_absolute_percentage_error(b_y_test, preds) * 100
-
-            coc = ((np.mean(preds - prev_cycle_preds) / np.mean(prev_cycle_preds)) * 100
-                   if prev_cycle_preds is not None and len(preds) == len(prev_cycle_preds) else np.nan)
-
-            cycle_metrics['bias'].append(bias)
-            cycle_metrics['accuracy'].append(accuracy)
-            cycle_metrics['mape'].append(mape)
-            cycle_metrics['coc'].append(coc)
-            prev_cycle_preds = preds
-
-    return cycle_metrics
 
 
 
@@ -524,6 +813,7 @@ def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_fea
     stressed_metrics = {}
 
     for country in combined_df['Country'].unique():
+        print(f"\nEvaluating stressed metrics for country: {country}")
         stressed_val_data = combined_df_stressed[
             (combined_df_stressed['Country'] == country) &
             (combined_df_stressed['Date'] >= val_start) &
@@ -539,10 +829,14 @@ def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_fea
         stressed_X_blind_test = stressed_blind_test_data.drop(columns=[target_column, 'Date', 'Country'])
         stressed_y_blind_test = stressed_blind_test_data[target_column]
 
+        # Preprocess ARIMA-specific dataset
+        arima_df = prepare_for_arima_ma(combined_df_stressed[combined_df_stressed['Country'] == country], target_column)
+
         country_results = {}
 
         # Default ML models on stressed validation and blind test sets
         for model_name, model in models.items():
+            model.fit(stressed_X_val, stressed_y_val)
             stressed_val_preds = model.predict(stressed_X_val)
             stressed_blind_test_preds = model.predict(stressed_X_blind_test)
 
@@ -562,6 +856,7 @@ def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_fea
 
         # Retrained ML models on stressed blind test set only
         for model_name, model in retrained_models.items():
+            model.fit(stressed_X_blind_test, stressed_y_blind_test)
             stressed_re_blind_test_preds = model.predict(stressed_X_blind_test)
 
             country_results[f"{model_name} Retrained"] = {
@@ -573,33 +868,53 @@ def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_fea
             }
 
 
-        # Train and evaluate ARIMA and MA models on stressed data for the country
-        arima_model, stressed_arima_forecast = train_arima_model(
-            y_train=stressed_y_val,  # Train ARIMA on stressed validation data
-            forecast_steps=len(stressed_y_blind_test)
-        )
-        ma_model, stressed_ma_forecast = train_ma_model(
-            y_train=stressed_y_val,
-            window=4,
-            forecast_steps=len(stressed_y_blind_test)
-        )
+        # # Train and evaluate ARIMA and MA models on stressed data for the country
+        # arima_model, stressed_arima_forecast = train_arima_model(
+        #     y_train=stressed_y_val,  # Train ARIMA on stressed validation data
+        #     forecast_steps=len(stressed_y_blind_test)
+        # )
+        # ma_model, stressed_ma_forecast = train_ma_model(
+        #     y_train=stressed_y_val,
+        #     window=4,
+        #     forecast_steps=len(stressed_y_blind_test)
+        # )
+        
+        # Use pre-trained ARIMA and MA models
+        try:
+            _, stressed_arima_forecast, _ = train_arima_model(
+                y_combined=arima_df[target_column],
+                blind_test_data=stressed_y_blind_test,
+                forecast_steps=len(stressed_y_blind_test)
+            )
 
+            # Store metrics for ARIMA and MA models
+            country_results['ARIMA'] = {
+                'blind_test': {
+                    'MAPE%': mean_absolute_percentage_error(stressed_y_blind_test, stressed_arima_forecast) * 100,
+                    'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_blind_test, stressed_arima_forecast) * 100,
+                    'Bias%': (np.mean(stressed_arima_forecast - stressed_y_blind_test) / np.mean(stressed_y_blind_test)) * 100
+                }
+            }
+        except Exception as e:
+            print(f"ARIMA model failed for {country}: {e}")
 
-        # Store metrics for ARIMA and MA models
-        country_results['ARIMA'] = {
-            'blind_test': {
-                'MAPE%': mean_absolute_percentage_error(stressed_y_blind_test, stressed_arima_forecast) * 100,
-                'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_blind_test, stressed_arima_forecast) * 100,
-                'Bias%': (np.mean(stressed_arima_forecast - stressed_y_blind_test) / np.mean(stressed_y_blind_test)) * 100
+        try:
+            _, stressed_ma_forecast, _ = train_ma_model(
+                y_combined=arima_df[target_column],
+                blind_test_data=stressed_y_blind_test,
+                window=4,
+                forecast_steps=len(stressed_y_blind_test)
+            )
+
+            country_results['Moving Average'] = {
+                'blind_test': {
+                    'MAPE%': mean_absolute_percentage_error(stressed_y_blind_test, stressed_ma_forecast) * 100,
+                    'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_blind_test, stressed_ma_forecast) * 100,
+                    'Bias%': (np.mean(stressed_ma_forecast - stressed_y_blind_test) / np.mean(stressed_y_blind_test)) * 100
+                }
             }
-        }
-        country_results['Moving Average'] = {
-            'blind_test': {
-                'MAPE%': mean_absolute_percentage_error(stressed_y_blind_test, stressed_ma_forecast) * 100,
-                'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_blind_test, stressed_ma_forecast) * 100,
-                'Bias%': (np.mean(stressed_ma_forecast - stressed_y_blind_test) / np.mean(stressed_y_blind_test)) * 100
-            }
-        }
+        except Exception as e:
+            print(f"Moving Average model failed for {country}: {e}")
 
         # Add the results for this country to the stressed_metrics dictionary
         stressed_metrics[country] = country_results
@@ -647,8 +962,6 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
         'reg_lambda': ('suggest_int', 0, 1)
     }
 
-    # print("xgb_trial_params:", xgb_trial_params)
-    # print("lgb_trial_params:", lgb_trial_params)
 
     best_xgb_params = tune_model(XGBRegressor, X_train, y_train, X_val, y_val, xgb_trial_params)
     best_lgb_params = tune_model(LGBMRegressor, X_train, y_train, X_val, y_val, lgb_trial_params)
@@ -706,7 +1019,6 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
 def get_or_generate_results(combined_df, cycles=3):
     results_file = 'results.pkl'
 
-    # Define the shock parameters
     shock_years = [2017, 2020, 2023]
     shock_quarter = 4
     shock_features = [

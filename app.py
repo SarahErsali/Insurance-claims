@@ -50,7 +50,8 @@ app.layout = html.Div([
 
 # ----------------- Global Variable for Processed Data ------------------
 
-combined_df = None  # Placeholder for the global processed DataFrame
+combined_df = None 
+arima_df = None
 
 # ----------------- Callback for page content --------------------------
 
