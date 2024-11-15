@@ -104,6 +104,11 @@ def prepare_for_arima_ma(combined_df, target_column):
 
     # Set Date as index (optional, based on ARIMA/MA requirements)
     arima_df.set_index('Date', inplace=True)
+
+    # Explicitly set the frequency for the index
+    if not arima_df.index.freq:
+        arima_df.index = pd.date_range(start=arima_df.index.min(), periods=len(arima_df), freq="ME")
+
     
     return arima_df
 
