@@ -46,7 +46,15 @@ def split_data(combined_df, train_start, train_end, val_start, val_end, blind_te
 
 
 
-def train_and_evaluate_model(model, X_train, y_train, X_val, y_val, X_blind_test=None, y_blind_test=None):
+def train_and_evaluate_model(model, X_train, y_train, X_val, y_val, X_blind_test=None, y_blind_test=None, combined_df=None, target_column=None):
+    """
+    Train and evaluate the model. Optionally, make predictions on the entire combined dataset.
+    
+    Args:
+        combined_df (pd.DataFrame): The full combined dataset (optional, for all-country predictions).
+        target_column (str): The name of the target column (optional).
+    """
+    
     model.fit(X_train, y_train)
     val_preds = model.predict(X_val)
     metrics = {
@@ -64,7 +72,14 @@ def train_and_evaluate_model(model, X_train, y_train, X_val, y_val, X_blind_test
             'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test, blind_test_preds) * 100,
             'Bias%': (np.mean(blind_test_preds - y_blind_test) / np.mean(y_blind_test)) * 100
         }
-    return metrics, val_preds, blind_test_preds
+
+    # Add predictions for all countries if combined_df and target_column are provided
+    all_countries_preds = None
+    if combined_df is not None and target_column is not None:
+        X_all = combined_df.drop(columns=[target_column, 'Date', 'Country'], errors='ignore')
+        all_countries_preds = model.predict(X_all)
+
+    return metrics, val_preds, blind_test_preds, all_countries_preds
 
 
 # ---------------------------------- Model Optimization (Bayesian Method) -------------------------------------------
@@ -115,7 +130,14 @@ def tune_model(model_class, X_train, y_train, X_val, y_val, trial_params):
 # ----------------------------------- Retraining on Blind Test Set -----------------------------------------
 
 
-def retrain_and_evaluate(model_class, best_params, X_combined, y_combined, X_blind_test, y_blind_test):
+def retrain_and_evaluate(model_class, best_params, X_combined, y_combined, X_blind_test, y_blind_test, combined_df=None, target_column=None):
+    """
+    Retrain the model on combined data and evaluate on blind test set. Optionally predict for all countries.
+    
+    Args:
+        combined_df (pd.DataFrame): Full combined dataset (optional, for all-country predictions).
+        target_column (str): Target column name (optional).
+    """
     # Dynamically add verbose=-1 if the model is LightGBM to suppress repetative warnings in the console
     if model_class.__name__ == 'LGBMClassifier' or model_class.__name__ == 'LGBMRegressor':
         best_params['verbose'] = -1
@@ -130,7 +152,14 @@ def retrain_and_evaluate(model_class, best_params, X_combined, y_combined, X_bli
             'Bias%': (np.mean(test_preds - y_blind_test) / np.mean(y_blind_test)) * 100
         }
     }
-    return model, metrics, test_preds
+
+    # Predict for all countries if combined_df and target_column are provided
+    all_countries_preds = None
+    if combined_df is not None and target_column is not None:
+        X_all = combined_df.drop(columns=[target_column, 'Date', 'Country'], errors='ignore')
+        all_countries_preds = model.predict(X_all)
+
+    return model, metrics, test_preds, all_countries_preds
 
 
 
@@ -306,7 +335,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
 
         # Evaluate ARIMA Model
         try:
-            arima_model, arima_forecast, _ = train_arima_model(
+            arima_model, arima_forecast, future_arima_forecast = train_arima_model(
                 y_combined=arima_df[target_column],  # Use the full ARIMA-preprocessed target column
                 blind_test_data=y_blind_test_country,  # Pass the blind test set
                 forecast_steps=len(y_blind_test_country)  # Forecast steps equal to the length of the blind test set
@@ -322,14 +351,15 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
             }
             country_results['ARIMA'] = {
                 'metrics': arima_metrics,
-                'blind_test_predictions': arima_forecast
+                'blind_test_predictions': arima_forecast,
+                'future_forecast': future_arima_forecast
             }
         except Exception as e:
             print(f"ARIMA model evaluation failed for {country}: {e}")
 
         # Evaluate Moving Average Model
         try:
-            ma_model, ma_forecast, _ = train_ma_model(
+            ma_model, ma_forecast, future_ma_forecast = train_ma_model(
                 y_combined=arima_df[target_column],  # Use the full MA-preprocessed target column
                 blind_test_data=y_blind_test_country,  # Pass the blind test set
                 window=4,  # Rolling window size for MA
@@ -346,7 +376,8 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
             }
             country_results['Moving Average'] = {
                 'metrics': ma_metrics,
-                'blind_test_predictions': ma_forecast
+                'blind_test_predictions': ma_forecast,
+                'future_forecast': future_ma_forecast
             }
         except Exception as e:
             print(f"Moving Average model evaluation failed for {country}: {e}")
@@ -396,6 +427,9 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
         for model_name, model in all_models.items():
             model_type = model_types[model_name]
             backtest_metrics = backtest_model(country_data, arima_df, model, model_type, target_column, cycles=cycles)
+            model_results[model_name] = backtest_metrics
+
+            # Save backtesting results for this model
             model_results[model_name] = backtest_metrics
 
         backtesting_results[country] = model_results
@@ -688,7 +722,7 @@ def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_fea
             model.fit(stressed_X_blind_test, stressed_y_blind_test)
             stressed_re_blind_test_preds = model.predict(stressed_X_blind_test)
 
-            country_results[f"{model_name} Retrained"] = {
+            country_results[model_name] = {
                 'blind_test': {
                     'MAPE%': mean_absolute_percentage_error(stressed_y_blind_test, stressed_re_blind_test_preds) * 100,
                     'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_blind_test, stressed_re_blind_test_preds) * 100,
@@ -766,8 +800,16 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
 
     xgb_model = XGBRegressor()
     lgb_model = LGBMRegressor()
-    results['default_xgb_metrics'], xgb_val_preds, xgb_test_preds = train_and_evaluate_model(xgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test)
-    results['default_lgb_metrics'], lgb_val_preds, lgb_test_preds = train_and_evaluate_model(lgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test)
+    results['default_xgb_metrics'], xgb_val_preds, xgb_test_preds, xgb_all_preds = train_and_evaluate_model(xgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
+    results['default_lgb_metrics'], lgb_val_preds, lgb_test_preds, lgb_all_preds = train_and_evaluate_model(lgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
+
+    # Save all-country predictions
+    results['ml_predictions'] = {
+        'all_countries_predictions': {
+            'Default XGBoost': xgb_all_preds,
+            'Default LightGBM': lgb_all_preds
+        }
+    }
 
     xgb_trial_params = {
         'n_estimators': ('suggest_int', 50, 300),
@@ -798,12 +840,17 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     X_combined = pd.concat([X_train, X_val], ignore_index=True)
     y_combined = pd.concat([y_train, y_val], ignore_index=True)
 
-    re_xgb_model, results['retrained_xgb_metrics'], re_xgb_test_preds = retrain_and_evaluate(
-        XGBRegressor, best_xgb_params, X_combined, y_combined, X_blind_test, y_blind_test
+    re_xgb_model, results['retrained_xgb_metrics'], re_xgb_test_preds, re_xgb_all_preds = retrain_and_evaluate(
+        XGBRegressor, best_xgb_params, X_combined, y_combined, X_blind_test, y_blind_test, combined_df, target_column
     )
-    re_lgb_model, results['retrained_lgb_metrics'], re_lgb_test_preds = retrain_and_evaluate(
-        LGBMRegressor, best_lgb_params, X_combined, y_combined, X_blind_test, y_blind_test
+    re_lgb_model, results['retrained_lgb_metrics'], re_lgb_test_preds, re_lgb_all_preds = retrain_and_evaluate(
+        LGBMRegressor, best_lgb_params, X_combined, y_combined, X_blind_test, y_blind_test, combined_df, target_column
     )
+
+    # Add retrained all-country predictions
+    results['ml_predictions']['all_countries_predictions']['Retrained XGBoost'] = re_xgb_all_preds
+    results['ml_predictions']['all_countries_predictions']['Retrained LightGBM'] = re_lgb_all_preds
+
 
     models = {
         'Default XGBoost': xgb_model,
