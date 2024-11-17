@@ -118,8 +118,6 @@ def tune_model(model_class, X_train, y_train, X_val, y_val, trial_params):
             print(f"Error in parameter setting: {e}")
             raise e  # Re-raise to capture Optuna logging
 
-    # Check the initial trial_params input
-    #print("Trial parameters received:", trial_params)
 
     study = optuna.create_study(direction='minimize')
     study.optimize(objective, n_trials=20)
@@ -394,6 +392,8 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
 
 # ---------------------------------- Back Testing ----------------------------------------------------------------
 
+# # model_dicts is models
+# # model_types is the dictionary defining each model's type
 
 def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
     """
@@ -544,96 +544,6 @@ def backtest_model(country_data, arima_df, model, model_type, target_column, win
 
 
 
-# # model_dicts is models
-# # model_types is the dictionary defining each model's type
-
-
-# def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
-#     # Combine all models and types into one dictionary
-#     all_models = {}
-#     for model_dict in model_dicts:
-#         all_models.update(model_dict)  # Combine each model dictionary into all_models
-
-#     countries = combined_df['Country'].unique()
-#     backtesting_results = {}
-
-#     for country in countries:
-#         country_data = combined_df[combined_df['Country'] == country]
-        
-#         model_results = {}
-#         for model_name, model in all_models.items():
-#             model_type = model_types[model_name]  # Get the model type directly from model_types dictionary
-#             backtest_metrics = backtest_model(country_data, model, model_type, cycles=cycles)  # Pass model_type directly to backtest_model
-#             model_results[model_name] = backtest_metrics
-        
-#         backtesting_results[country] = model_results
-
-#     return backtesting_results
-
-
-
-
-# def backtest_model(country_data, model, model_type, window=24, test_size=12, cycles=3):
-#     cycle_metrics = {'bias': [], 'accuracy': [], 'mape': [], 'coc': []}
-#     target_column = 'NET Claims Incurred'
-#     prev_cycle_preds = None
-
-#     # Pre-set the prediction approach based on model type
-#     is_ml_model = model_type in ['xgb', 'lgb']
-#     is_arima_model = model_type == 'arima'
-#     is_ma_model = model_type == 'ma'
-
-#     for i in range(cycles):
-#         b_train = country_data.iloc[i:i + window]
-#         b_test = country_data.iloc[i + window:i + window + test_size]
-
-#         b_X_train = b_train.drop([target_column, 'Date', 'Country'], axis=1, errors='ignore')
-#         b_y_train = b_train[target_column]
-#         b_X_test = b_test.drop([target_column, 'Date', 'Country'], axis=1, errors='ignore')
-#         b_y_test = b_test[target_column]
-
-#         if is_ml_model:
-#             model.fit(b_X_train, b_y_train)
-#             preds = model.predict(b_X_test)
-#         elif is_arima_model:
-#             try:
-#                 arima_cycle_model = ARIMA(b_y_train, order=model.order).fit()
-#                 preds = arima_cycle_model.forecast(steps=len(b_y_test)).values
-#             except Exception as e:
-#                 print(f"ARIMA model training/forecasting failed: {e}")
-#                 preds = np.full(len(b_y_test), np.nan)
-#         elif is_ma_model:
-#             if len(b_y_train) >= 4:
-#                 ma_cycle = b_y_train.rolling(window=4).mean().iloc[-1]
-#                 preds = np.full(len(b_y_test), ma_cycle if not np.isnan(ma_cycle) else np.nan)
-#             else:
-#                 print("Warning: Insufficient data for MA prediction in this cycle.")
-#                 preds = np.full(len(b_y_test), np.nan)
-
-#         # Ensure predictions align with test data
-#         if len(preds) != len(b_y_test):
-#             print("Warning: Prediction and test length mismatch, skipping this cycle.")
-#             continue
-
-#         # Calculate metrics if predictions are valid
-#         if len(preds) == len(b_y_test) and not np.isnan(preds).all():
-#             bias = (np.mean(preds - b_y_test) / np.mean(b_y_test)) * 100
-#             accuracy = 100 - mean_absolute_percentage_error(b_y_test, preds) * 100
-#             mape = mean_absolute_percentage_error(b_y_test, preds) * 100
-
-#             coc = ((np.mean(preds - prev_cycle_preds) / np.mean(prev_cycle_preds)) * 100
-#                    if prev_cycle_preds is not None and len(preds) == len(prev_cycle_preds) else np.nan)
-
-#             cycle_metrics['bias'].append(bias)
-#             cycle_metrics['accuracy'].append(accuracy)
-#             cycle_metrics['mape'].append(mape)
-#             cycle_metrics['coc'].append(coc)
-#             prev_cycle_preds = preds
-
-#     return cycle_metrics
-
-
-
 # ------------------------------------- Apply Stress Testing -------------------------------------------------------
 
 def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_features, shock_magnitude, models, retrained_models, target_column, val_start, val_end, blind_test_start, blind_test_end):
@@ -730,17 +640,6 @@ def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_fea
                 }
             }
 
-
-        # # Train and evaluate ARIMA and MA models on stressed data for the country
-        # arima_model, stressed_arima_forecast = train_arima_model(
-        #     y_train=stressed_y_val,  # Train ARIMA on stressed validation data
-        #     forecast_steps=len(stressed_y_blind_test)
-        # )
-        # ma_model, stressed_ma_forecast = train_ma_model(
-        #     y_train=stressed_y_val,
-        #     window=4,
-        #     forecast_steps=len(stressed_y_blind_test)
-        # )
         
         # Use pre-trained ARIMA and MA models
         try:
@@ -803,11 +702,19 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     results['default_xgb_metrics'], xgb_val_preds, xgb_test_preds, xgb_all_preds = train_and_evaluate_model(xgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
     results['default_lgb_metrics'], lgb_val_preds, lgb_test_preds, lgb_all_preds = train_and_evaluate_model(lgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
 
-    # Save all-country predictions
+    # Save all-country, validation, and blind test predictions for default models
     results['ml_predictions'] = {
         'all_countries_predictions': {
             'Default XGBoost': xgb_all_preds,
             'Default LightGBM': lgb_all_preds
+        },
+        'validation_predictions': {
+            'Default XGBoost': xgb_val_preds,
+            'Default LightGBM': lgb_val_preds
+        },
+        'blind_test_predictions': {
+            'Default XGBoost': xgb_test_preds,
+            'Default LightGBM': lgb_test_preds
         }
     }
 
@@ -848,6 +755,8 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     )
 
     # Add retrained all-country predictions
+    results['ml_predictions']['blind_test_predictions']['Retrained XGBoost'] = re_xgb_test_preds
+    results['ml_predictions']['blind_test_predictions']['Retrained LightGBM'] = re_lgb_test_preds
     results['ml_predictions']['all_countries_predictions']['Retrained XGBoost'] = re_xgb_all_preds
     results['ml_predictions']['all_countries_predictions']['Retrained LightGBM'] = re_lgb_all_preds
 
