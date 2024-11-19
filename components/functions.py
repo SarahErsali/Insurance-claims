@@ -1,5 +1,8 @@
 import pandas as pd
 import numpy as np
+import random
+np.random.seed(42)
+random.seed(42)
 from xgboost import XGBRegressor
 from lightgbm import LGBMRegressor
 import statsmodels.api as sm
@@ -8,6 +11,7 @@ import shap
 from math import sqrt
 import optuna
 from statsmodels.tsa.arima.model import ARIMA
+from statsmodels.tsa.stattools import adfuller
 from statsforecast.models import AutoARIMA
 from sktime.forecasting.arima import AutoARIMA
 from pmdarima import auto_arima
@@ -31,6 +35,10 @@ def split_data(combined_df, train_start, train_end, val_start, val_end, blind_te
     val_data = combined_df[(combined_df['Date'] >= val_start) & (combined_df['Date'] <= val_end)]
     blind_test_data = combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]
 
+    # Debugging: Print the sizes of the splits
+    #print(f"Train data size: {train_data.shape[0]}")  #Train data size: 22
+    #print(f"Validation data size: {val_data.shape[0]}")  #Validation data size: 5
+    #print(f"Blind test data size: {blind_test_data.shape[0]}")  #Blind test data size: 4
 
     X_train = train_data.drop(columns=[target_column, 'Date', 'Country'])
     y_train = train_data[target_column]
@@ -79,7 +87,14 @@ def train_and_evaluate_model(model, X_train, y_train, X_val, y_val, X_blind_test
         X_all = combined_df.drop(columns=[target_column, 'Date', 'Country'], errors='ignore')
         all_countries_preds = model.predict(X_all)
 
-    return metrics, val_preds, blind_test_preds, all_countries_preds
+    return {
+        'metrics': metrics,
+        'validation_predictions': val_preds,
+        'validation_actuals': y_val,  # Add actual validation values
+        'blind_test_predictions': blind_test_preds,
+        'blind_test_actuals': y_blind_test,  # Add actual blind test values
+        'all_countries_predictions': all_countries_preds
+    }
 
 
 # ---------------------------------- Model Optimization (Bayesian Method) -------------------------------------------
@@ -178,10 +193,23 @@ def train_arima_model(y_combined, blind_test_data, forecast_steps, max_p=5, max_
     Returns:
         tuple: (ARIMA model, blind test forecast array, future forecast array)
     """
+
+    # Debugging statements
+    print(f"y_combined length: {len(y_combined)}, blind_test_data length: {len(blind_test_data)}, forecast_steps: {forecast_steps}")  #y_combined length: 27, blind_test_data length: 4, forecast_steps: 4
+    #print(f"First few values of y_combined:\n{y_combined.head()}")   #correct values
+
     # Ensure y_combined has no NaN values
     if y_combined.isnull().any():
         print("Warning: NaN values detected in y_combined. Please ensure it's cleaned before passing to ARIMA.")
         return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
+
+    result = adfuller(y_combined)
+    print(f"ADF Statistic: {result[0]}")
+    print(f"p-value: {result[1]}")
+    
+    if result[1] > 0.05:
+        print("non-stationary y_combined (p-value > 0.05). Consider differencing the data.")
+        y_combined = y_combined.diff().dropna()
 
     if len(y_combined) < max_p + max_d + max_q + 1:
         print("Warning: Insufficient data points for ARIMA model fitting.")
@@ -194,12 +222,30 @@ def train_arima_model(y_combined, blind_test_data, forecast_steps, max_p=5, max_
             error_action='ignore', max_p=max_p, max_q=max_q, max_d=max_d
         )
         best_params = arima_params_model.order
+        print(f"Best ARIMA order: {best_params}")
+
 
         arima_model = ARIMA(y_combined, order=best_params)
         arima_model_fitted = arima_model.fit()
 
+        # Check for convergence issues and log them
+        if not arima_model_fitted.mle_retvals.get('converged', True):
+            print(f"Convergence warning details: {arima_model_fitted.mle_retvals}")
+
         arima_forecast = arima_model_fitted.forecast(steps=len(blind_test_data))
         future_arima_forecast = arima_model_fitted.forecast(steps=forecast_steps)
+
+        # # Handle NaN forecasts
+        # if np.isnan(arima_forecast).any():
+        #     print("Warning: ARIMA forecast contains NaN values. Filling with the mean of y_combined.")
+        #     arima_forecast = np.full(len(blind_test_data), y_combined.mean())
+        # if np.isnan(future_arima_forecast).any():
+        #     print("Warning: ARIMA future forecast contains NaN values. Filling with the mean of y_combined.")
+        #     future_arima_forecast = np.full(forecast_steps, y_combined.mean())
+
+        print(f"ARIMA forecast (blind test): {arima_forecast}")
+        print(f"ARIMA forecast (future): {future_arima_forecast}")
+
 
         return arima_model_fitted, arima_forecast, future_arima_forecast
     except Exception as e:
@@ -279,7 +325,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
 
         # Use prepare_for_arima_ma to clean the data for ARIMA and MA models
         arima_df = prepare_for_arima_ma(country_data, target_column)
-        y_train_arima = arima_df[target_column][:len(y_train_country)]
+        y_train_arima = arima_df[target_column][:len(y_combined)] # Slice to align with y_combined
 
 
         country_results = {}
@@ -306,7 +352,9 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
                 country_results[model_name] = {
                     'metrics': metrics,
                     'validation_predictions': val_preds,
-                    'blind_test_predictions': blind_test_preds
+                    'validation_actuals': y_val_country,
+                    'blind_test_predictions': blind_test_preds,
+                    'blind_test_actuals': y_blind_test_country 
                 }
             except Exception as e:
                 print(f"Error evaluating {model_name} for {country}: {e}")
@@ -326,15 +374,21 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
 
                 country_results[model_name] = {
                     'metrics': metrics,
-                    'blind_test_predictions': blind_test_preds
+                    'blind_test_predictions': blind_test_preds,
+                    'blind_test_actuals': y_blind_test_country
                 }
             except Exception as e:
                 print(f"Error evaluating retrained model {model_name} for {country}: {e}")
 
+            # Pass the combined train and validation target series to ARIMA
+            #print(f"Final y_combined length before ARIMA for country: {country}: {len(y_combined)}")  #Final y_combined length before ARIMA for country: Spain: 27
+            #print(f"Final y_combined indices before ARIMA for country: {country}:\n{y_combined.index}")   #Final y_combined indices before ARIMA for country: Spain: RangeIndex(start=0, stop=27, step=1)
+            #print(f"Final y_combined head before ARIMA for country: {country}:\n{y_combined.head()}")   # correct values
+        
         # Evaluate ARIMA Model
         try:
             arima_model, arima_forecast, future_arima_forecast = train_arima_model(
-                y_combined=arima_df[target_column],  # Use the full ARIMA-preprocessed target column
+                y_combined=y_train_arima,  # Use the full ARIMA-preprocessed target column (arima_df[target_column])
                 blind_test_data=y_blind_test_country,  # Pass the blind test set
                 forecast_steps=len(y_blind_test_country)  # Forecast steps equal to the length of the blind test set
             )
@@ -350,6 +404,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
             country_results['ARIMA'] = {
                 'metrics': arima_metrics,
                 'blind_test_predictions': arima_forecast,
+                'blind_test_actuals': y_blind_test_country,
                 'future_forecast': future_arima_forecast
             }
         except Exception as e:
@@ -358,7 +413,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
         # Evaluate Moving Average Model
         try:
             ma_model, ma_forecast, future_ma_forecast = train_ma_model(
-                y_combined=arima_df[target_column],  # Use the full MA-preprocessed target column
+                y_combined=y_train_arima,  # Use the full MA-preprocessed target column (arima_df[target_column])
                 blind_test_data=y_blind_test_country,  # Pass the blind test set
                 window=4,  # Rolling window size for MA
                 forecast_steps=len(y_blind_test_country)  # Forecast steps equal to the length of the blind test set
@@ -375,6 +430,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
             country_results['Moving Average'] = {
                 'metrics': ma_metrics,
                 'blind_test_predictions': ma_forecast,
+                'blind_test_actuals': y_blind_test_country,
                 'future_forecast': future_ma_forecast
             }
         except Exception as e:
@@ -409,7 +465,7 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
     Returns:
         dict: Backtesting results for each country and model.
     """
-    # Combine all models and types into one dictionary
+    # Combine all ML models and types into one dictionary
     all_models = {}
     for model_dict in model_dicts:
         all_models.update(model_dict)
@@ -418,26 +474,31 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
     backtesting_results = {}
 
     for country in countries:
+        print(f"\nProcessing country in back testing: {country}")  # Debugging statement
         country_data = combined_df[combined_df['Country'] == country]
 
         # Preprocess data for ARIMA/MA
         arima_df = prepare_for_arima_ma(country_data, target_column)
+        y_train_arima = arima_df[target_column][:len(country_data)]  # Slice to match the country data length
 
         model_results = {}
         for model_name, model in all_models.items():
             model_type = model_types[model_name]
-            backtest_metrics = backtest_model(country_data, arima_df, model, model_type, target_column, cycles=cycles)
+            print(f"Back testing evaluating model: {model_name} (Type: {model_type})")  # Debugging statement
+            backtest_metrics = backtest_model(country_data, y_train_arima, model, model_type, target_column, cycles=cycles)
             model_results[model_name] = backtest_metrics
 
             # Save backtesting results for this model
             model_results[model_name] = backtest_metrics
 
+        print(f"Completed backtesting for {country}.")  # Debugging statement
         backtesting_results[country] = model_results
 
+    print("Backtesting complete.")  # Debugging statement
     return backtesting_results
 
 
-def backtest_model(country_data, arima_df, model, model_type, target_column, window=24, test_size=12, cycles=3):
+def backtest_model(country_data, y_train_arima, model, model_type, target_column, window=24, test_size=12, cycles=3):
     """
     Perform backtesting for a single model (ML, ARIMA, MA) on a country's data.
 
@@ -454,6 +515,7 @@ def backtest_model(country_data, arima_df, model, model_type, target_column, win
     Returns:
         dict: Metrics for each backtesting cycle.
     """
+    print(f"Starting backtest for model type: {model_type}")  # Debugging statement
     cycle_metrics = {'bias': [], 'accuracy': [], 'mape': [], 'coc': []}
     prev_cycle_preds = None
 
@@ -462,22 +524,25 @@ def backtest_model(country_data, arima_df, model, model_type, target_column, win
     is_arima_model = model_type == 'arima'
     is_ma_model = model_type == 'ma'
 
-    # Pre-train ARIMA and MA models if applicable
+    # ARIMA and MA models if applicable
     if is_arima_model:
+        print("Back testing training ARIMA model...")  # Debugging statement
         arima_model, arima_blind_test_forecast, _ = train_arima_model(
-            y_combined=arima_df[target_column], 
+            y_combined=y_train_arima, 
             blind_test_data=country_data[target_column].iloc[window:], 
             forecast_steps=test_size
         )
     elif is_ma_model:
+        print("Back testing training MA model...")  # Debugging statement
         ma_model, ma_blind_test_forecast, _ = train_ma_model(
-            y_combined=arima_df[target_column],
+            y_combined=y_train_arima,
             blind_test_data=country_data[target_column].iloc[window:],
             window=4,
             forecast_steps=test_size
         )
 
     for i in range(cycles):
+        print(f"Cycle {i + 1}/{cycles}...")  # Debugging statement
         b_train = country_data.iloc[i:i + window]
         b_test = country_data.iloc[i + window:i + window + test_size]
 
@@ -487,12 +552,14 @@ def backtest_model(country_data, arima_df, model, model_type, target_column, win
         b_y_test = b_test[target_column]
 
         if is_ml_model:
+            print(f"Back testing training ML model...")  # Debugging statement
             model.fit(b_X_train, b_y_train)
             preds = model.predict(b_X_test)
             
         elif is_arima_model:
             try:
-                preds = arima_blind_test_forecast[i:i + test_size]  # Use pre-trained ARIMA model for forecasting
+                print("Back testing: Forecasting with ARIMA model...")  # Debugging statement
+                preds = arima_blind_test_forecast[i:i + test_size]  # Use ARIMA model for forecasting
             except Exception as e:
                 print(f"ARIMA model forecasting failed: {e}")
                 preds = np.full(len(b_y_test), np.nan)
@@ -500,7 +567,8 @@ def backtest_model(country_data, arima_df, model, model_type, target_column, win
 
         elif is_ma_model:
             try:
-                preds = ma_blind_test_forecast[i:i + test_size]   # Use pre-trained MA model for forecasting
+                print("Back testing: Forecasting with MA model...")  # Debugging statement
+                preds = ma_blind_test_forecast[i:i + test_size]   # Use MA model for forecasting
             except Exception as e:
                 print(f"MA model forecasting failed: {e}")
                 preds = np.full(len(b_y_test), np.nan)
@@ -508,6 +576,7 @@ def backtest_model(country_data, arima_df, model, model_type, target_column, win
         
         # Ensure predictions align with test data
         if len(preds) != len(b_y_test):
+            print(f"Prediction length mismatch: preds={len(preds)}, b_y_test={len(b_y_test)}")  # Debugging statement
             if len(preds) == 0:
                 # Handle empty predictions by filling with mean of training set
                 print("Warning: Predictions are empty. Filling with mean of training data.")
@@ -540,6 +609,9 @@ def backtest_model(country_data, arima_df, model, model_type, target_column, win
             cycle_metrics['coc'].append(coc)
             prev_cycle_preds = preds
 
+            print(f"Cycle {i + 1} metrics: Bias={bias:.2f}, Accuracy={accuracy:.2f}, MAPE={mape:.2f}")  # Debugging statement
+
+    print("Backtesting complete.")  # Debugging statement
     return cycle_metrics
 
 
@@ -549,7 +621,7 @@ def backtest_model(country_data, arima_df, model, model_type, target_column, win
 def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_features, shock_magnitude, models, retrained_models, target_column, val_start, val_end, blind_test_start, blind_test_end):
     combined_df_stressed = combined_df.copy()
 
-    shock_years = [2017, 2020, 2023]
+    shock_years = [2017, 2019, 2020, 2023]
     shock_quarter = 4
     shock_features = [
         'NET Premiums Written', 'NET Premiums Earned', 'NET Claims Incurred',
@@ -604,6 +676,7 @@ def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_fea
 
         # Preprocess ARIMA-specific dataset
         arima_df = prepare_for_arima_ma(combined_df_stressed[combined_df_stressed['Country'] == country], target_column)
+        y_train_arima = arima_df[target_column][:len(combined_df_stressed)]  # Slice to match combined data length
 
         country_results = {}
 
@@ -641,10 +714,10 @@ def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_fea
             }
 
         
-        # Use pre-trained ARIMA and MA models
+        # Use ARIMA and MA models
         try:
             _, stressed_arima_forecast, _ = train_arima_model(
-                y_combined=arima_df[target_column],
+                y_combined=y_train_arima,
                 blind_test_data=stressed_y_blind_test,
                 forecast_steps=len(stressed_y_blind_test)
             )
@@ -662,7 +735,7 @@ def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_fea
 
         try:
             _, stressed_ma_forecast, _ = train_ma_model(
-                y_combined=arima_df[target_column],
+                y_combined=y_train_arima,
                 blind_test_data=stressed_y_blind_test,
                 window=4,
                 forecast_steps=len(stressed_y_blind_test)
@@ -684,6 +757,64 @@ def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_fea
     return stressed_metrics
 
 
+# -------------------------------- Business Solution ---------------------------------------------------------------------------------
+
+
+def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_mape=0.2):
+    """
+    Select the best model for each country based on weighted criteria from backtesting results.
+
+    Args:
+        results (dict): The results dictionary containing backtesting metrics.
+        weight_bias (float): Weight for bias in the final score.
+        weight_accuracy (float): Weight for accuracy in the final score.
+        weight_mape (float): Weight for MAPE in the final score.
+
+    Returns:
+        dict: Updated results dictionary with the best models for each country.
+    """
+    backtesting_results = results.get("backtesting_results", {})
+    best_models = {}
+
+    for country, models in backtesting_results.items():
+        print(f"\nSelecting the best model for {country}...")
+        model_scores = {}
+
+        for model_name, metrics in models.items():
+            try:
+                # Extract the mean values over cycles
+                avg_bias = np.nanmean(metrics.get("bias", []))
+                avg_accuracy = np.nanmean(metrics.get("accuracy", []))
+                avg_mape = np.nanmean(metrics.get("mape", []))
+
+                # Calculate the weighted score
+                # Lower bias and MAPE are better, higher accuracy is better
+                score = (
+                    (1 / abs(avg_bias)) * weight_bias + 
+                    avg_accuracy * weight_accuracy - 
+                    avg_mape * weight_mape
+                )
+
+                model_scores[model_name] = score
+                print(f"Model: {model_name}, Score: {score:.2f}")
+            except Exception as e:
+                print(f"Error calculating score for model {model_name} in {country}: {e}")
+                model_scores[model_name] = float("-inf")  # Penalize invalid models
+
+        # Select the model with the highest score
+        best_model = max(model_scores, key=model_scores.get)
+        best_models[country] = {
+            "model": best_model,
+            "score": model_scores[best_model]
+        }
+        print(f"Best model for {country}: {best_model} with score {model_scores[best_model]:.2f}")
+
+    # Save the best models to the results dictionary
+    results["best_models"] = best_models
+    return results
+
+
+
 # -------------------------------- Pipeline Model ---------------------------------------------------------------------------------
 
 
@@ -697,26 +828,61 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
 
     (X_train, y_train), (X_val, y_val), (X_blind_test, y_blind_test) = split_data(combined_df, train_start, train_end, val_start, val_end, blind_test_start, blind_test_end, target_column)
 
+    #print(f"y_train size: {y_train.shape[0]}")  # y_train size: 22
+    #print(f"y_val size: {y_val.shape[0]}")  #y_val size: 5
+
     xgb_model = XGBRegressor()
     lgb_model = LGBMRegressor()
-    results['default_xgb_metrics'], xgb_val_preds, xgb_test_preds, xgb_all_preds = train_and_evaluate_model(xgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
-    results['default_lgb_metrics'], lgb_val_preds, lgb_test_preds, lgb_all_preds = train_and_evaluate_model(lgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
+
+    # Train and evaluate default models
+    xgb_results = train_and_evaluate_model(xgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
+    lgb_results = train_and_evaluate_model(lgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
+
+    results['default_xgb_metrics'] = xgb_results['metrics']
+    results['default_lgb_metrics'] = lgb_results['metrics']
 
     # Save all-country, validation, and blind test predictions for default models
     results['ml_predictions'] = {
         'all_countries_predictions': {
-            'Default XGBoost': xgb_all_preds,
-            'Default LightGBM': lgb_all_preds
+            'Default XGBoost': xgb_results['all_countries_predictions'],
+            'Default LightGBM': lgb_results['all_countries_predictions']
         },
         'validation_predictions': {
-            'Default XGBoost': xgb_val_preds,
-            'Default LightGBM': lgb_val_preds
+            'Default XGBoost': xgb_results['validation_predictions'],
+            'Default LightGBM': lgb_results['validation_predictions']
+        },
+        'validation_actuals': {
+            'Default XGBoost': xgb_results['validation_actuals'],
+            'Default LightGBM': lgb_results['validation_actuals']
         },
         'blind_test_predictions': {
-            'Default XGBoost': xgb_test_preds,
-            'Default LightGBM': lgb_test_preds
+            'Default XGBoost': xgb_results['blind_test_predictions'],
+            'Default LightGBM': lgb_results['blind_test_predictions']
+        },
+        'blind_test_actuals': {
+            'Default XGBoost': xgb_results['blind_test_actuals'],
+            'Default LightGBM': lgb_results['blind_test_actuals']
         }
     }
+
+    # results['default_xgb_metrics'], xgb_val_preds, xgb_test_preds, xgb_all_preds = train_and_evaluate_model(xgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
+    # results['default_lgb_metrics'], lgb_val_preds, lgb_test_preds, lgb_all_preds = train_and_evaluate_model(lgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
+
+    # # Save all-country, validation, and blind test predictions for default models
+    # results['ml_predictions'] = {
+    #     'all_countries_predictions': {
+    #         'Default XGBoost': xgb_all_preds,
+    #         'Default LightGBM': lgb_all_preds
+    #     },
+    #     'validation_predictions': {
+    #         'Default XGBoost': xgb_val_preds,
+    #         'Default LightGBM': lgb_val_preds
+    #     },
+    #     'blind_test_predictions': {
+    #         'Default XGBoost': xgb_test_preds,
+    #         'Default LightGBM': lgb_test_preds
+    #     }
+    # }
 
     xgb_trial_params = {
         'n_estimators': ('suggest_int', 50, 300),
@@ -747,12 +913,31 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     X_combined = pd.concat([X_train, X_val], ignore_index=True)
     y_combined = pd.concat([y_train, y_val], ignore_index=True)
 
-    re_xgb_model, results['retrained_xgb_metrics'], re_xgb_test_preds, re_xgb_all_preds = retrain_and_evaluate(
+    # Debugging
+    #print(f"Final y_combined length before ARIMA: {len(y_combined)}")  #Final y_combined length before ARIMA: 27
+    #print(f"Final y_combined indices before ARIMA:\n{y_combined.index}")   #Final y_combined indices before ARIMA:RangeIndex(start=0, stop=27, step=1)
+    #print(f"Final y_combined head before ARIMA:\n{y_combined.head()}")  # correct values
+
+
+    # Debug
+    #print(f"y_combined size (expected 27): {y_combined.shape[0]}")   #y_combined size (expected 27): 27
+    #print(f"Combined train and validation target size: {y_combined.shape[0]}")  #Combined train and validation target size: 27
+    #print(f"Are there duplicates in combined_df? {combined_df.duplicated().any()}")   #Are there duplicates in combined_df? False
+
+    # Retrain and evaluate
+    re_xgb_model, re_xgb_metrics, re_xgb_test_preds, re_xgb_all_preds = retrain_and_evaluate(
         XGBRegressor, best_xgb_params, X_combined, y_combined, X_blind_test, y_blind_test, combined_df, target_column
     )
-    re_lgb_model, results['retrained_lgb_metrics'], re_lgb_test_preds, re_lgb_all_preds = retrain_and_evaluate(
+    re_lgb_model, re_lgb_metrics, re_lgb_test_preds, re_lgb_all_preds = retrain_and_evaluate(
         LGBMRegressor, best_lgb_params, X_combined, y_combined, X_blind_test, y_blind_test, combined_df, target_column
     )
+
+    # re_xgb_model, results['retrained_xgb_metrics'], re_xgb_test_preds, re_xgb_all_preds = retrain_and_evaluate(
+    #     XGBRegressor, best_xgb_params, X_combined, y_combined, X_blind_test, y_blind_test, combined_df, target_column
+    # )
+    # re_lgb_model, results['retrained_lgb_metrics'], re_lgb_test_preds, re_lgb_all_preds = retrain_and_evaluate(
+    #     LGBMRegressor, best_lgb_params, X_combined, y_combined, X_blind_test, y_blind_test, combined_df, target_column
+    # )
 
     # Add retrained all-country predictions
     results['ml_predictions']['blind_test_predictions']['Retrained XGBoost'] = re_xgb_test_preds
@@ -776,17 +961,29 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
         'retrained_models': retrained_models
     }
 
-    # Define model_dict and model_types for backtesting
-    model_dict = [models, retrained_models]
-    model_types = {
-        'Default XGBoost': 'xgb', 
-        'Retrained XGBoost': 'xgb', 
-        'Default LightGBM': 'lgb', 
-        'Retrained LightGBM': 'lgb'
-    }
+    # # Define model_dict and model_types for backtesting
+    # model_dict = [models, retrained_models]
+    # model_types = {
+    #     'Default XGBoost': 'xgb', 
+    #     'Retrained XGBoost': 'xgb', 
+    #     'Default LightGBM': 'lgb', 
+    #     'Retrained LightGBM': 'lgb'
+    # }
 
     # Run country-wise evaluation and backtesting
     results['country_metrics'], arima_models, ma_models = evaluate_models_by_country(models, retrained_models, combined_df, target_column, val_start, val_end, blind_test_start, blind_test_end, y_combined)
+    
+   # Define model_dict and model_types for backtesting
+    model_dict = [models, retrained_models, {'ARIMA': arima_models, 'Moving Average': ma_models}]
+    model_types = {
+        'Default XGBoost': 'xgb',
+        'Retrained XGBoost': 'xgb',
+        'Default LightGBM': 'lgb',
+        'Retrained LightGBM': 'lgb',
+        'ARIMA': 'arima',
+        'Moving Average': 'ma'
+    }
+
     results['backtesting_results'] = run_backtest(model_dict, model_types, combined_df=combined_df, target_column=target_column, cycles=cycles)
     
     results['time_series_models'] = {
@@ -799,6 +996,8 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
         models, retrained_models, target_column, val_start, val_end, blind_test_start, blind_test_end
     )
 
+    # Select the best model for each country
+    results = select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_mape=0.2)
 
     return results
 
@@ -810,7 +1009,7 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
 def get_or_generate_results(combined_df, cycles=3):
     results_file = 'results.pkl'
 
-    shock_years = [2017, 2020, 2023]
+    shock_years = [2017, 2019, 2020, 2023]
     shock_quarter = 4
     shock_features = [
         'NET Premiums Written', 'NET Premiums Earned', 'NET Claims Incurred',
@@ -962,280 +1161,3 @@ def get_or_generate_results(combined_df, cycles=3):
 #     return re_xgb_blind_test_preds, re_lgb_blind_test_preds, best_xgb_params, best_lgb_params
 
 
-#------------------Simulation App ----------------------------
-#-------------------------------------------------------------
-#-------------------------------------------------------------
-#-------------------------------------------------------------
-#-------------------------------------------------------------
-#-------------------------------------------------------------
-#-------------------------------------------------------------
-#-------------------------------------------------------------
-#-------------------------------------------------------------
-#-------------------------------------------------------------
-# #-------- Function to get XGBoost predictions --------------------------------------------------
-
-
-
-# def get_xgboost_predictions(X_combined, y_combined, X_blind_test):
-#     re_xgb_model = XGBRegressor(**xgb_best_params)
-#     re_xgb_model.fit(X_combined, y_combined)
-#     return re_xgb_model.predict(X_blind_test)
-
-
-
-# #--------- Function to get LightGBM predictions --------------------------------------------------
-
-
-
-# def get_lightgbm_predictions(X_combined, y_combined, X_blind_test):
-#     re_lgb_model = LGBMRegressor(**lgb_best_params)
-#     re_lgb_model.fit(X_combined, y_combined)
-#     return re_lgb_model.predict(X_blind_test)
-
-
-
-# #---------- Function to get ARIMA predictions -----------------------------------------------------
-
-
-
-
-# def get_arima_predictions(arima_train_data, arima_test_data, best_pdq, best_seasonal_pdq):
-#     # Define target for training
-#     arima_y_train = arima_train_data['Claims_Incurred']
-    
-#     # Fit the final ARIMA model with the manually set best order and seasonal order
-#     final_arima_model = sm.tsa.SARIMAX(arima_y_train, 
-#                                        order=best_pdq, 
-#                                        seasonal_order=best_seasonal_pdq,
-#                                        enforce_stationarity=False,  
-#                                        enforce_invertibility=False)
-    
-#     # Fit the model with more iterations and a stricter tolerance
-#     final_arima_model_fit = final_arima_model.fit(disp=False, maxiter=1000, tol=1e-6)
-    
-#     # Forecast for the test period
-#     arima_forecast = final_arima_model_fit.forecast(steps=len(arima_test_data))
-    
-#     return arima_forecast
-
-
-
-# #-------- Function to get Moving Average predictions -------------------------------------------------
-
-
-# def get_moving_average_predictions(ma_y_test, window_size):
-#     return ma_y_test.rolling(window=window_size).mean().shift(1).fillna(ma_y_test.mean())
-
-
-
-# #----------- Function to get performance metrics -------------------------------------------------
-
-
-
-# def calculate_model_metrics(y_true, y_pred):
-#     # Convert to numpy arrays
-#     y_true = np.array(y_true)
-#     y_pred = np.array(y_pred)
-
-#     # Handle cases where y_true contains zeros to avoid division by zero in MAPE
-#     y_true_safe = np.where(y_true == 0, np.finfo(float).eps, y_true)  # Replace 0 with a small epsilon value
-
-#     bias = np.mean(y_pred - y_true)
-
-#     # using the safe version of y_true
-#     mape = np.mean(np.abs((y_true - y_pred) / y_true_safe)) * 100
-
-#     accuracy = 100 - mape
-
-#     return {'Bias': bias, 'MAPE': mape, 'Accuracy': accuracy}
-
-
-
-# #----------- Function to get SHAP Analysis -------------------------------------------------------------------------------
-
-
-
-# # Ensure your project root and assets folder is correctly targeted
-# assets_folder_path = os.path.join(os.getcwd(), 'assets')
-
-# def generate_shap_plot_xgboost(X_combined, y_combined, X_blind_test):
-#     re_xgb_model = XGBRegressor(**xgb_best_params)
-#     re_xgb_model.fit(X_combined, y_combined)
-#     explainer = shap.Explainer(re_xgb_model, X_blind_test)
-#     shap_values = explainer(X_blind_test)
-
-#     plt.figure()
-#     shap.summary_plot(shap_values, X_blind_test, show=False)  # Prevent it from showing directly
-#     save_path_xgb = os.path.join(assets_folder_path, 'shap_summary_xgboost.png')
-#     plt.savefig(save_path_xgb)  # Save the plot to assets folder
-#     plt.close()  # Close the plot to avoid memory issues
-
-# def generate_shap_plot_lightgbm(X_combined, y_combined, X_blind_test):
-#     re_lgb_model = LGBMRegressor(**lgb_best_params)
-#     re_lgb_model.fit(X_combined, y_combined)
-#     explainer = shap.Explainer(re_lgb_model, X_blind_test)
-#     shap_values = explainer(X_blind_test)
-
-#     plt.figure()
-#     shap.summary_plot(shap_values, X_blind_test, show=False) 
-#     save_path_lgb = os.path.join(assets_folder_path, 'shap_summary_lightgbm.png')
-#     plt.savefig(save_path_lgb)  
-#     plt.close()  
-
-# # Generate SHAP plots by calling the functions
-# generate_shap_plot_xgboost(X_combined, y_combined, X_blind_test)
-# generate_shap_plot_lightgbm(X_combined, y_combined, X_blind_test)
-
-
-
-# #-------- Function to get feature importance -------------------------------------------------------------
-
-
-
-# def get_xgboost_feature_importance(X_combined, y_combined):
-#     re_xgb_model = XGBRegressor(**xgb_best_params)
-#     re_xgb_model.fit(X_combined, y_combined)
-    
-#     # Get feature importance and return as a DataFrame
-#     re_feature_importance_xgb = pd.DataFrame({
-#         'Feature': X_combined.columns,
-#         'Importance': re_xgb_model.feature_importances_
-#     })
-
-#     re_feature_importance_xgb = re_feature_importance_xgb.sort_values(by='Importance', ascending=False)
-#     return re_feature_importance_xgb
-
-# def get_lightgbm_feature_importance(X_combined, y_combined):
-#     re_lgb_model = LGBMRegressor(**lgb_best_params)
-#     re_lgb_model.fit(X_combined, y_combined)
-    
-#     # Get feature importance and return as a DataFrame
-#     re_feature_importance_lgb = pd.DataFrame({
-#         'Feature': X_combined.columns,
-#         'Importance': re_lgb_model.feature_importances_
-#     })
-
-#     re_feature_importance_lgb = re_feature_importance_lgb.sort_values(by='Importance', ascending=False)
-#     return re_feature_importance_lgb
-
-
-
-# #------------- Function to get Stress Testing ---------------------------------------------------------
-
-
-
-# window_size = 3
-
-# # Prepare data for stress testing
-# property_data_feature_selected_s = property_data_feature_selected.drop(['Claims_Incurred', 'Date'], axis=1, errors='ignore')
-# property_data_model_s = property_data_model.drop(['Claims_Incurred', 'Date'], axis=1, errors='ignore')
-
-# # Actual data for ML and ts models
-# ml_actual_y = property_data_feature_selected['Claims_Incurred']
-# ts_actual_y = property_data_model['Claims_Incurred']
-
-# def get_xgboost_predictions_storm():
-#     return re_xgb_model.predict(property_data_feature_selected_s)
-
-# def get_lightgbm_predictions_storm():
-#     return re_lgb_model.predict(property_data_feature_selected_s)
-
-# def get_arima_predictions_storm():
-#     arima_y_train = arima_train_data['Claims_Incurred']
-#     final_arima_model = sm.tsa.SARIMAX(arima_y_train, 
-#                                        order=best_pdq, 
-#                                        seasonal_order=best_seasonal_pdq,
-#                                        enforce_stationarity=False,  
-#                                        enforce_invertibility=False)
-    
-#     final_arima_model_fit = final_arima_model.fit(disp=False, maxiter=1000, tol=1e-6)
-#     return final_arima_model_fit.forecast(steps=len(property_data_model))
-
-# def get_moving_average_predictions_storm():
-#     storm_ma_prediction = ts_actual_y.rolling(window=window_size).mean().shift(1)
-#     storm_ma_prediction.fillna(ts_actual_y.mean(), inplace=True)
-#     return storm_ma_prediction
-
-
-
-
-# #------------- Function to get Back Testing -------------------------------------------------------------------
-
-
-
-# def backtest_with_coc(data, model_type, window=24, test_size=12, num_cycles=3):
-#     metrics = {'bias': [], 'accuracy': [], 'mape': []}
-    
-#     for i in range(num_cycles):
-#         train, test = data.iloc[i:i + window], data.iloc[i + window:i + window + test_size]
-#         b_X_train = train.drop(['Claims_Incurred', 'Date'], axis=1, errors='ignore')
-#         b_y_train = train['Claims_Incurred']
-#         b_X_test = test.drop(['Claims_Incurred', 'Date'], axis=1, errors='ignore')
-#         b_y_test = test['Claims_Incurred']
-
-#         if model_type == 'xgb':
-#             preds = XGBRegressor().fit(b_X_train, b_y_train).predict(b_X_test)
-#         elif model_type == 'lgb':
-#             preds = LGBMRegressor().fit(b_X_train, b_y_train).predict(b_X_test)
-#         elif model_type == 'arima':
-#             arima_model = sm.tsa.SARIMAX(b_y_train, order=(3, 2, 3), seasonal_order=(1, 1, 1, 12))
-#             arima_fitted = arima_model.fit(disp=False)
-#             preds = arima_fitted.forecast(test_size)  # Forecast the test size for ARIMA
-#         elif model_type == 'ma':
-#             preds = [b_y_train.rolling(window=3).mean().iloc[-1]] * test_size  # Repeat the MA prediction for test size
-        
-#         bias = np.mean(preds - b_y_test)
-#         accuracy = 100 - (mean_absolute_percentage_error(b_y_test, preds) * 100)
-#         mape = mean_absolute_percentage_error(b_y_test, preds) * 100
-
-        
-#         metrics['bias'].append(bias)
-#         metrics['accuracy'].append(accuracy)
-#         metrics['mape'].append(mape)
-
-#     return metrics
-
-
-# def get_xgb_backtest_results(data):
-#     return backtest_with_coc(data, 'xgb', window=66, test_size=12, num_cycles=3)
-
-# def get_lgb_backtest_results(data):
-#     return backtest_with_coc(data, 'lgb', window=66, test_size=12, num_cycles=3)
-
-# def get_arima_backtest_results(data):
-#     return backtest_with_coc(data, 'arima', window=66, test_size=12, num_cycles=3)
-
-# def get_ma_backtest_results(data):
-#     return backtest_with_coc(data, 'ma', window=66, test_size=12, num_cycles=3)
-
-
-
-
-# #------------- Function to get Business Solution -------------------------------------------------------------------
-
-
-
-
-# def generate_forecast_tables(final_arima_model_fit):
-#     # ARIMA Forecast (Nov 2024 - Oct 2025)
-#     forecast_dates = pd.date_range(start='2024-11-01', periods=12, freq='ME')
-#     arima_future_predictions = final_arima_model_fit.forecast(steps=12)
-
-#     arima_forecast_table = pd.DataFrame({
-#         'LOB': 'Property',
-#         'Date': forecast_dates.strftime('%Y-%b'),  # Format YYYYMon
-#         'Prediction': arima_future_predictions,
-#         'Model': 'ARIMA'
-#     })
-
-#     arima_forecast_table.reset_index(drop=True, inplace=True)
-
-#     # Since ARIMA is now the only model being considered, the best prediction is always ARIMA
-#     final_forecast_table = arima_forecast_table[['LOB', 'Date', 'Prediction', 'Model']].copy()
-
-#     # Modify the 'LOB' column to only show 'Property' in the middle row
-#     middle_row = len(final_forecast_table) // 2
-#     final_forecast_table['LOB'] = [''] * len(final_forecast_table)  # Empty the LOB column
-#     final_forecast_table.loc[middle_row, 'LOB'] = 'Property'  # Set 'Property' in the middle row
-    
-#     return final_forecast_table

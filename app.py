@@ -22,6 +22,15 @@ import joblib
 import os
 
 
+# ------------------- Initialize Saved Results -------------------------
+
+try:
+    results = joblib.load('results.pkl') 
+    print("Results successfully loaded.")
+except FileNotFoundError:
+    print("Error: results.pkl not found. Generate the results before running the dashboard.")
+    results = None
+
 
 # -------------------- Initialize the app --------------------------------
 
@@ -99,7 +108,7 @@ def process_uploaded_data(contents, filenames):
         
         # Process data and store in the global combined_df variable
         combined_df = load_and_process_uploaded_data(contents, filenames, uploaded_data)
-        status_message = "✓ Data processing complete. Displaying processed data below."
+        status_message = "Data processing complete. Displaying processed data below."
 
         if isinstance(combined_df, pd.DataFrame):
             table = dash_table.DataTable(
@@ -129,7 +138,7 @@ def process_uploaded_data(contents, filenames):
 )
 
 def generate_and_save_results(n_clicks):
-    print("Generate button clicked")  # For debugging
+    #print("Generate button clicked")  # For debugging
 
     global combined_df 
 
@@ -138,10 +147,101 @@ def generate_and_save_results(n_clicks):
         return "No processed data available. Please upload your data first."
 
     results = get_or_generate_results(combined_df)
-    return "✓ Results have been generated successfully." if results else "Failed to generate results."
+    return "Results have been generated successfully." if results else "Failed to generate results."
 
 
 
+
+# -------------- Callback for Model Performance -------------------------
+@app.callback(
+    Output('model-comparison-graph', 'figure'),
+    Input('tab3-country-dropdown', 'value'),
+    Input('tab3-model-dropdown', 'value'),
+    Input('tab3-data-dropdown', 'value')
+)
+def update_model_predictions(selected_country, selected_model, selected_data):
+    """
+    Updates the plot based on dropdown selections.
+
+    Args:
+        selected_country (str): Country selected from the dropdown.
+        selected_model (str): Model type selected from the dropdown.
+        selected_data (str): Actual, validation, or blind test data.
+
+    Returns:
+        plotly.graph_objects.Figure: The updated figure.
+    """
+    global results
+
+    # Debugging: Log the selected country and keys in results['country_metrics']
+    print(f"Selected Country: {selected_country}")
+    print(f"Available Countries: {list(results['country_metrics'].keys())}")
+
+    # Check if results are loaded
+    if results is None:
+        raise ValueError("Results have not been generated or loaded. Please ensure results.pkl exists or generate the results.")
+
+    # Create a plotly figure
+    fig = go.Figure()
+
+    try:
+        # Handle "All Countries" option
+        if selected_country == 'All Countries':
+            predictions = results['ml_predictions']['all_countries_predictions'].get(selected_model, None)
+            if selected_data == 'validation':
+                actual_values = results['ml_predictions']['validation_actuals'].get(selected_model, None)
+            elif selected_data == 'blind_test':
+                actual_values = results['ml_predictions']['blind_test_actuals'].get(selected_model, None)
+            else:
+                actual_values = None
+
+        else:
+            # Get country-specific data
+            country_metrics = results['country_metrics'].get(selected_country, {})
+            predictions = country_metrics.get(selected_model, {}).get(f"{selected_data}_predictions", None)
+            if selected_data == 'validation':
+                actual_values = country_metrics.get('validation_actuals', None)
+            elif selected_data == 'blind_test':
+                actual_values = country_metrics.get('blind_test_actuals', None)
+            else:
+                actual_values = None
+
+        # Raise an error if both predictions and actual values are missing
+        if predictions is None and actual_values is None:
+            raise KeyError(f"No data found for {selected_country}, {selected_model}, {selected_data}.")
+
+        # Add actual values to the plot
+        if actual_values is not None and len(actual_values) > 0:
+            fig.add_trace(go.Scatter(
+                x=actual_values.index if hasattr(actual_values, 'index') else list(range(len(actual_values))),
+                y=actual_values.values if hasattr(actual_values, 'values') else actual_values,
+                mode='lines',
+                name='Actual',
+                line=dict(dash='dot')  
+            ))
+
+        # Add model predictions to the plot
+        if predictions is not None and len(predictions) > 0:
+            fig.add_trace(go.Scatter(
+                x=predictions.index if hasattr(predictions, 'index') else list(range(len(predictions))),
+                y=predictions.values if hasattr(predictions, 'values') else predictions,
+                mode='lines',
+                name=f'{selected_model} ({selected_data})'
+            ))
+
+    except KeyError as e:
+        raise ValueError(f"Error accessing data for {selected_country}, {selected_model}, {selected_data}: {e}")
+
+    # Update the layout of the figure
+    fig.update_layout(
+        title=f"{selected_model} vs Actual for {selected_country} ({selected_data})",
+        xaxis_title="Date",
+        yaxis_title="NET Claims Incurred",
+        legend_title="Legend",
+        template="plotly_dark"  
+    )
+
+    return fig
 
 
 

@@ -28,7 +28,7 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
         
     for name, df in existing_dataframes.items():
         df.columns = df.columns.str.strip()
-        print("Columns for country:", name, df.columns)
+        #print("Columns for country:", name, df.columns)
         
         for col in df.select_dtypes(include='object').columns:
             if 'date' not in col.lower(): 
@@ -39,16 +39,16 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
 
         # Apply the quarter-to-date conversion
         if 'Date' in df.columns.tolist():
-            print(f"Before conversion, 'Date' sample values in {name}: {df['Date'].head()}")
+            #print(f"Before conversion, 'Date' sample values in {name}: {df['Date'].head()}")
             df['Date'] = df['Date'].apply(lambda x: convert_quarter_to_date(x) if isinstance(x, str) else x)
-            print(f"After conversion, 'Date' sample values in {name}: {df['Date'].head()}")
+            #print(f"After conversion, 'Date' sample values in {name}: {df['Date'].head()}")
         else:
             print(f"No 'Date' column found in {name}.")
 
         # Fill NaNs with mean for numeric columns
         for col in df.select_dtypes(include='float64').columns:
             if df[col].isnull().any():
-                print(f"Filling NaNs in column {col} with mean for {name}")
+                #print(f"Filling NaNs in column {col} with mean for {name}")
                 df[col] = df[col].fillna(df[col].mean())
 
 
@@ -75,7 +75,8 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
         combined_df['Quarter'] = np.nan
 
     combined_df = combined_df.groupby('Country').apply(lambda group: group.ffill().bfill()).reset_index(drop=True)
-
+    # Debugging after processing
+    #print(f"Processed combined_df size: {combined_df.shape}")  #Processed combined_df size: (31, 67)
 
     # Debug check for any remaining NaNs after processing
     if combined_df.isnull().any().any():
@@ -109,7 +110,8 @@ def prepare_for_arima_ma(combined_df, target_column):
     if not arima_df.index.freq:
         arima_df.index = pd.date_range(start=arima_df.index.min(), periods=len(arima_df), freq="ME")
 
-    
+    #print(f"ARIMA dataset size: {arima_df.shape[0]}")  #ARIMA dataset size: 31
+
     return arima_df
 
 
@@ -178,18 +180,3 @@ def prepare_for_arima_ma(combined_df, target_column):
 
 #     return combined_df
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-# Export the variables
-#__all__ = ['combined_df']
