@@ -50,20 +50,14 @@ def split_data(combined_df, train_start, train_end, val_start, val_end, blind_te
     return (X_train, y_train), (X_val, y_val), (X_blind_test, y_blind_test)  # Return tuples
 
 
-# ---------------------------------- Default Model Developement -----------------------------------------------------
+# ------------------------ Single Default ML Models Developement on Combined Countries -----------------------------------------------------
 
 
 
-def train_and_evaluate_model(model, X_train, y_train, X_val, y_val, X_blind_test=None, y_blind_test=None, combined_df=None, target_column=None):
-    """
-    Train and evaluate the model. Optionally, make predictions on the entire combined dataset.
-    
-    Args:
-        combined_df (pd.DataFrame): The full combined dataset (optional, for all-country predictions).
-        target_column (str): The name of the target column (optional).
-    """
-    
+def train_and_evaluate_model(model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df=None, target_column=None):
+        
     model.fit(X_train, y_train)
+
     val_preds = model.predict(X_val)
     metrics = {
         'validation': {
@@ -72,14 +66,12 @@ def train_and_evaluate_model(model, X_train, y_train, X_val, y_val, X_blind_test
             'Bias%': (np.mean(val_preds - y_val) / np.mean(y_val)) * 100
         }
     }
-    blind_test_preds = None
-    if X_blind_test is not None and y_blind_test is not None:
-        blind_test_preds = model.predict(X_blind_test)
-        metrics['blind_test'] = {
-            'MAPE%': mean_absolute_percentage_error(y_blind_test, blind_test_preds) * 100,
-            'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test, blind_test_preds) * 100,
-            'Bias%': (np.mean(blind_test_preds - y_blind_test) / np.mean(y_blind_test)) * 100
-        }
+    blind_test_preds = model.predict(X_blind_test)
+    metrics['blind_test'] = {
+        'MAPE%': mean_absolute_percentage_error(y_blind_test, blind_test_preds) * 100,
+        'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test, blind_test_preds) * 100,
+        'Bias%': (np.mean(blind_test_preds - y_blind_test) / np.mean(y_blind_test)) * 100
+    }
 
     # Add predictions for all countries if combined_df and target_column are provided
     all_countries_preds = None
@@ -90,14 +82,14 @@ def train_and_evaluate_model(model, X_train, y_train, X_val, y_val, X_blind_test
     return {
         'metrics': metrics,
         'validation_predictions': val_preds,
-        'validation_actuals': y_val,  # Add actual validation values
+        'validation_actuals': y_val,  
         'blind_test_predictions': blind_test_preds,
-        'blind_test_actuals': y_blind_test,  # Add actual blind test values
-        'all_countries_predictions': all_countries_preds
+        'blind_test_actuals': y_blind_test,  
+        'all_countries_predictions': all_countries_preds  # Predictions for the entire combined dataset
     }
 
 
-# ---------------------------------- Model Optimization (Bayesian Method) -------------------------------------------
+# --------------------------- Default ML Models Optimization (Bayesian Method) -------------------------------------------
 
 
 def tune_model(model_class, X_train, y_train, X_val, y_val, trial_params):
@@ -140,7 +132,7 @@ def tune_model(model_class, X_train, y_train, X_val, y_val, trial_params):
 
 
 
-# ----------------------------------- Retraining on Blind Test Set -----------------------------------------
+# ----------------------------------- Single Retrained ML Models Developement on Combined Countries on Blind Test Set -----------------------------------------
 
 
 def retrain_and_evaluate(model_class, best_params, X_combined, y_combined, X_blind_test, y_blind_test, combined_df=None, target_column=None):
@@ -155,7 +147,7 @@ def retrain_and_evaluate(model_class, best_params, X_combined, y_combined, X_bli
     if model_class.__name__ == 'LGBMClassifier' or model_class.__name__ == 'LGBMRegressor':
         best_params['verbose'] = -1
 
-    model = model_class(**best_params)
+    model = model_class(**best_params, random_state=42)
     model.fit(X_combined, y_combined)
     test_preds = model.predict(X_blind_test)
     metrics = {
@@ -402,7 +394,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
                 }
             }
             country_results['ARIMA'] = {
-                'metrics': arima_metrics,
+                'metrics': arima_metrics,                
                 'blind_test_predictions': arima_forecast,
                 'blind_test_actuals': y_blind_test_country,
                 'future_forecast': future_arima_forecast
@@ -828,16 +820,18 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
 
     (X_train, y_train), (X_val, y_val), (X_blind_test, y_blind_test) = split_data(combined_df, train_start, train_end, val_start, val_end, blind_test_start, blind_test_end, target_column)
 
-    #print(f"y_train size: {y_train.shape[0]}")  # y_train size: 22
-    #print(f"y_val size: {y_val.shape[0]}")  #y_val size: 5
+    # Debugging statements
+    print(f"y_train size: {y_train.shape[0]}")  # y_train size: 22
+    print(f"y_val size: {y_val.shape[0]}")  #y_val size: 5
 
+    # Train and evaluate a single default ML models that is obtained on all countries
     xgb_model = XGBRegressor()
     lgb_model = LGBMRegressor()
 
-    # Train and evaluate default models
     xgb_results = train_and_evaluate_model(xgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
     lgb_results = train_and_evaluate_model(lgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
 
+    # Metrics for both single default ML models that is obtained on all countries on validation and blind test set
     results['default_xgb_metrics'] = xgb_results['metrics']
     results['default_lgb_metrics'] = lgb_results['metrics']
 
@@ -865,25 +859,7 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
         }
     }
 
-    # results['default_xgb_metrics'], xgb_val_preds, xgb_test_preds, xgb_all_preds = train_and_evaluate_model(xgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
-    # results['default_lgb_metrics'], lgb_val_preds, lgb_test_preds, lgb_all_preds = train_and_evaluate_model(lgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
-
-    # # Save all-country, validation, and blind test predictions for default models
-    # results['ml_predictions'] = {
-    #     'all_countries_predictions': {
-    #         'Default XGBoost': xgb_all_preds,
-    #         'Default LightGBM': lgb_all_preds
-    #     },
-    #     'validation_predictions': {
-    #         'Default XGBoost': xgb_val_preds,
-    #         'Default LightGBM': lgb_val_preds
-    #     },
-    #     'blind_test_predictions': {
-    #         'Default XGBoost': xgb_test_preds,
-    #         'Default LightGBM': lgb_test_preds
-    #     }
-    # }
-
+    # Retraining and re-evaluation a single default ML models that is obtained on all countries
     xgb_trial_params = {
         'n_estimators': ('suggest_int', 50, 300),
         'learning_rate': ('suggest_float', 0.01, 0.3),
@@ -913,18 +889,15 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     X_combined = pd.concat([X_train, X_val], ignore_index=True)
     y_combined = pd.concat([y_train, y_val], ignore_index=True)
 
-    # Debugging
+    # Debugging statements 
     #print(f"Final y_combined length before ARIMA: {len(y_combined)}")  #Final y_combined length before ARIMA: 27
     #print(f"Final y_combined indices before ARIMA:\n{y_combined.index}")   #Final y_combined indices before ARIMA:RangeIndex(start=0, stop=27, step=1)
     #print(f"Final y_combined head before ARIMA:\n{y_combined.head()}")  # correct values
-
-
-    # Debug
     #print(f"y_combined size (expected 27): {y_combined.shape[0]}")   #y_combined size (expected 27): 27
     #print(f"Combined train and validation target size: {y_combined.shape[0]}")  #Combined train and validation target size: 27
     #print(f"Are there duplicates in combined_df? {combined_df.duplicated().any()}")   #Are there duplicates in combined_df? False
 
-    # Retrain and evaluate
+    
     re_xgb_model, re_xgb_metrics, re_xgb_test_preds, re_xgb_all_preds = retrain_and_evaluate(
         XGBRegressor, best_xgb_params, X_combined, y_combined, X_blind_test, y_blind_test, combined_df, target_column
     )

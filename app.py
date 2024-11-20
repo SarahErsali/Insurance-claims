@@ -153,62 +153,83 @@ def generate_and_save_results(n_clicks):
 
 
 # -------------- Callback for Model Performance -------------------------
+
+
 @app.callback(
     Output('model-comparison-graph', 'figure'),
     Input('tab3-country-dropdown', 'value'),
     Input('tab3-model-dropdown', 'value'),
-    Input('tab3-data-dropdown', 'value')
 )
-def update_model_predictions(selected_country, selected_model, selected_data):
-    """
-    Updates the plot based on dropdown selections.
-
-    Args:
-        selected_country (str): Country selected from the dropdown.
-        selected_model (str): Model type selected from the dropdown.
-        selected_data (str): Actual, validation, or blind test data.
-
-    Returns:
-        plotly.graph_objects.Figure: The updated figure.
-    """
+def update_model_predictions(selected_country, selected_model):
     global results
-
-    # Debugging: Log the selected country and keys in results['country_metrics']
-    print(f"Selected Country: {selected_country}")
-    print(f"Available Countries: {list(results['country_metrics'].keys())}")
 
     # Check if results are loaded
     if results is None:
         raise ValueError("Results have not been generated or loaded. Please ensure results.pkl exists or generate the results.")
 
-    # Create a plotly figure
+    # Create a Plotly figure
     fig = go.Figure()
 
     try:
+        # Debugging: Log selected inputs
+        print(f"Selected Country: {selected_country}")
+        print(f"Selected Model: {selected_model}")
+
+        # Parse selected_model to extract the model and dataset
+        if 'Validation' in selected_model:
+            dataset = 'validation'
+            model_name = selected_model.replace(' Validation', '')
+        elif 'Blind Test' in selected_model:
+            dataset = 'blind_test'
+            model_name = selected_model.replace(' Blind Test', '')
+        else:
+            dataset = 'blind_test'
+            model_name = selected_model  # For ARIMA and Moving Average
+
+        print(f"Parsed Model Name: {model_name}, Dataset: {dataset}")
+
         # Handle "All Countries" option
         if selected_country == 'All Countries':
-            predictions = results['ml_predictions']['all_countries_predictions'].get(selected_model, None)
-            if selected_data == 'validation':
-                actual_values = results['ml_predictions']['validation_actuals'].get(selected_model, None)
-            elif selected_data == 'blind_test':
-                actual_values = results['ml_predictions']['blind_test_actuals'].get(selected_model, None)
+            predictions = results['ml_predictions']['all_countries_predictions'].get(model_name, None)
+            # For default ML models, fetch actuals from results['ml_predictions']
+            if model_name in ['Default XGBoost', 'Default LightGBM']:
+                actual_values = results['ml_predictions'][f'{dataset}_actuals'].get(model_name, None)
             else:
-                actual_values = None
+                # For retrained ML models, ARIMA, and Moving Average, fetch actuals differently
+                actual_values = results['ml_predictions'][f'{dataset}_actuals'].get('Default XGBoost', None)
 
         else:
             # Get country-specific data
             country_metrics = results['country_metrics'].get(selected_country, {})
-            predictions = country_metrics.get(selected_model, {}).get(f"{selected_data}_predictions", None)
-            if selected_data == 'validation':
-                actual_values = country_metrics.get('validation_actuals', None)
-            elif selected_data == 'blind_test':
-                actual_values = country_metrics.get('blind_test_actuals', None)
-            else:
-                actual_values = None
+            print(f"Country Metrics for {selected_country}: {list(country_metrics.keys())}")  # Debugging statement
+
+            model_metrics = country_metrics.get(model_name, {})
+            print(f"Model Metrics for {model_name}: {list(model_metrics.keys())}")  # Debugging statement
+
+            actual_values = model_metrics.get(f'{dataset}_actuals', None)
+            predictions = model_metrics.get(f'{dataset}_predictions', None)
+
+        # Debugging: Check retrieved values
+        print(f"Actual Values: {actual_values}")
+        print(f"Predictions: {predictions}")
+
+        # # Ensure x-axis values are datetime formatted
+        # if actual_values is not None and hasattr(actual_values, 'index'):
+        #     actual_values.index = pd.to_datetime(actual_values.index)
+        # if predictions is not None and hasattr(predictions, 'index'):
+        #     predictions.index = pd.to_datetime(predictions.index)
 
         # Raise an error if both predictions and actual values are missing
         if predictions is None and actual_values is None:
-            raise KeyError(f"No data found for {selected_country}, {selected_model}, {selected_data}.")
+            raise KeyError(f"No data found for {selected_country}, {selected_model}.")
+
+        # Specific debugging for ARIMA and Moving Average
+        if model_name == 'ARIMA':
+            print(f"ARIMA Metrics: {results['country_metrics'][selected_country]['ARIMA']}")  # Debugging statement
+        elif model_name == 'Moving Average':
+            print(f"Moving Average Metrics: {results['country_metrics'][selected_country]['Moving Average']}")  # Debugging statement
+
+        
 
         # Add actual values to the plot
         if actual_values is not None and len(actual_values) > 0:
@@ -217,7 +238,7 @@ def update_model_predictions(selected_country, selected_model, selected_data):
                 y=actual_values.values if hasattr(actual_values, 'values') else actual_values,
                 mode='lines',
                 name='Actual',
-                line=dict(dash='dot')  
+                line=dict(dash='dot')
             ))
 
         # Add model predictions to the plot
@@ -226,22 +247,128 @@ def update_model_predictions(selected_country, selected_model, selected_data):
                 x=predictions.index if hasattr(predictions, 'index') else list(range(len(predictions))),
                 y=predictions.values if hasattr(predictions, 'values') else predictions,
                 mode='lines',
-                name=f'{selected_model} ({selected_data})'
+                name=f'{selected_model}'
             ))
 
     except KeyError as e:
-        raise ValueError(f"Error accessing data for {selected_country}, {selected_model}, {selected_data}: {e}")
+        raise ValueError(f"Error accessing data for {selected_country}, {selected_model}: {e}")
 
     # Update the layout of the figure
     fig.update_layout(
-        title=f"{selected_model} vs Actual for {selected_country} ({selected_data})",
+        title=f"{selected_model} vs Actual for {selected_country}",
         xaxis_title="Date",
         yaxis_title="NET Claims Incurred",
         legend_title="Legend",
-        template="plotly_dark"  
+        template="plotly_dark"
     )
 
     return fig
+
+
+
+
+
+
+# @app.callback(
+#     Output('model-comparison-graph', 'figure'),
+#     Input('tab3-country-dropdown', 'value'),
+#     Input('tab3-model-dropdown', 'value'),
+# )
+# def update_model_predictions(selected_country, selected_model, selected_data):
+   
+#     global results
+
+#     # Debugging: Log the selected country and keys in results['country_metrics']
+#     print(f"Selected Country: {selected_country}")
+#     print(f"Available Countries: {list(results['country_metrics'].keys())}")
+
+#     # Check if results are loaded
+#     if results is None:
+#         raise ValueError("Results have not been generated or loaded. Please ensure results.pkl exists or generate the results.")
+
+#     # Create a plotly figure
+#     fig = go.Figure()
+
+#     try:
+#         # Debugging: Check selected country and model
+#         print(f"Selected Country: {selected_country}")
+#         print(f"Selected Model: {selected_model}")
+        
+
+#         # Handle "All Countries" option
+#         if selected_country == 'All Countries':
+#             predictions = results['ml_predictions']['all_countries_predictions'].get(selected_model, None)
+#             if selected_data == 'validation':
+#                 actual_values = results['ml_predictions']['validation_actuals'].get(selected_model, None)
+#             elif selected_data == 'blind_test':
+#                 actual_values = results['ml_predictions']['blind_test_actuals'].get(selected_model, None)
+#             else:
+#                 actual_values = None
+
+#         else:
+#             # Get country-specific data
+#             country_metrics = results['country_metrics'].get(selected_country, {})
+#             print(f"Country Metrics for {selected_country}: {list(country_metrics.keys())}")  # Debugging statement
+#             model_metrics = country_metrics.get(selected_model, {})
+#             print(f"Model Metrics for {selected_model}: {list(model_metrics.keys())}")  # Debugging statement
+
+#             if selected_data == 'blind_test':
+#                 actual_values = model_metrics.get('blind_test_actuals', None)
+#                 predictions = model_metrics.get('blind_test_predictions', None)
+#             elif selected_data == 'validation':
+#                 actual_values = model_metrics.get('validation_actuals', None)
+#                 predictions = model_metrics.get('validation_predictions', None)
+#             else:
+#                 actual_values = None
+#                 predictions = None
+
+#         # Debugging: Check what is retrieved
+#         print(f"Actual Values: {actual_values}")
+#         print(f"Predictions: {predictions}")
+
+        
+#         # Specific debugging for ARIMA and Moving Average
+#         if selected_model == 'ARIMA':
+#             print(f"ARIMA Metrics: {results['country_metrics'][selected_country]['ARIMA']}")  # Debugging statement
+#         elif selected_model == 'Moving Average':
+#             print(f"Moving Average Metrics: {results['country_metrics'][selected_country]['Moving Average']}")  # Debugging statement
+
+#         # Raise an error if both predictions and actual values are missing
+#         if predictions is None and actual_values is None:
+#             raise KeyError(f"No data found for {selected_country}, {selected_model}.")
+
+#         # Add actual values to the plot
+#         if actual_values is not None and len(actual_values) > 0:
+#             fig.add_trace(go.Scatter(
+#                 x=actual_values.index if hasattr(actual_values, 'index') else list(range(len(actual_values))),
+#                 y=actual_values.values if hasattr(actual_values, 'values') else actual_values,
+#                 mode='lines',
+#                 name='Actual',
+#                 line=dict(dash='dot')  
+#             ))
+
+#         # Add model predictions to the plot
+#         if predictions is not None and len(predictions) > 0:
+#             fig.add_trace(go.Scatter(
+#                 x=predictions.index if hasattr(predictions, 'index') else list(range(len(predictions))),
+#                 y=predictions.values if hasattr(predictions, 'values') else predictions,
+#                 mode='lines',
+#                 name=f'{selected_model}'
+#             ))
+
+#     except KeyError as e:
+#         raise ValueError(f"Error accessing data for {selected_country}, {selected_model}: {e}")
+
+#     # Update the layout of the figure
+#     fig.update_layout(
+#         title=f"{selected_model} vs Actual for {selected_country}",
+#         xaxis_title="Date",
+#         yaxis_title="NET Claims Incurred",
+#         legend_title="Legend",
+#         template="plotly_dark"  
+#     )
+
+#     return fig
 
 
 

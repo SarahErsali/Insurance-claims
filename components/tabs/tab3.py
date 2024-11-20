@@ -1,12 +1,19 @@
 from dash import dcc, html
 import plotly.graph_objs as go
 import joblib
+import os
 from components.functions import get_or_generate_results
 
 
 # Load results from file
 results_file = 'results.pkl'
-results = joblib.load(results_file)
+# Safely load results or set to None
+if os.path.exists(results_file):
+    results = joblib.load(results_file)
+    print("Results successfully loaded in tab3.")
+else:
+    print(f"Warning: '{results_file}' not found in tab3. Generate the results using the 'Generate' button.")
+    results = None
 
 def render_tab3():
     return html.Div([
@@ -42,8 +49,8 @@ def render_tab3():
             ], style={'fontSize': '16px', 'textAlign': 'left', 'lineHeight': '2'}),
         ], style={'textAlign': 'left', 'marginBottom': '2.5cm'}),
 
-        # Instructions for selecting country, model, and dataset
-        html.P("Select the country, model, and dataset (Validation or Blind Test) you would like to evaluate:", style={
+        # Instructions for selecting country and model
+        html.P("Select the country and model to evaluate:", style={
             'textAlign': 'left',
             'fontSize': '20px',
             'marginTop': '4px',
@@ -62,38 +69,29 @@ def render_tab3():
                 style={'width': '300px', 'display': 'inline-block', 'marginRight': '20px'}
             ),
 
-            # Dropdown for model selection
-            html.Label("Model:", style={'fontWeight': 'bold', 'fontSize': '16px'}),
+            # Dropdown for model and dataset selection
+            html.Label("Model and Dataset:", style={'fontWeight': 'bold', 'fontSize': '16px'}),
             dcc.Dropdown(
                 id='tab3-model-dropdown',
                 options=[
-                    {'label': 'Default XGBoost', 'value': 'Default XGBoost'},
-                    {'label': 'Retrained XGBoost', 'value': 'Retrained XGBoost'},
-                    {'label': 'Default LightGBM', 'value': 'Default LightGBM'},
-                    {'label': 'Retrained LightGBM', 'value': 'Retrained LightGBM'},
-                    {'label': 'ARIMA', 'value': 'ARIMA'},
-                    {'label': 'Moving Average', 'value': 'Moving Average'}
+                    {'label': 'Default XGBoost (Validation)', 'value': 'Default XGBoost Validation'},
+                    {'label': 'Default XGBoost (Blind Test)', 'value': 'Default XGBoost Blind Test'},
+                    {'label': 'Default LightGBM (Validation)', 'value': 'Default LightGBM Validation'},
+                    {'label': 'Default LightGBM (Blind Test)', 'value': 'Default LightGBM Blind Test'},
+                    {'label': 'Retrained XGBoost (Blind Test)', 'value': 'Retrained XGBoost Blind Test'},
+                    {'label': 'Retrained LightGBM (Blind Test)', 'value': 'Retrained LightGBM Blind Test'},
+                    {'label': 'ARIMA (Blind Test)', 'value': 'ARIMA'},
+                    {'label': 'Moving Average (Blind Test)', 'value': 'Moving Average'}
                 ],
-                value='Default XGBoost',  # Default selection
-                style={'width': '300px', 'display': 'inline-block', 'marginRight': '20px'}
-            ),
-
-            # Dropdown for data selection
-            html.Label("Dataset:", style={'fontWeight': 'bold', 'fontSize': '16px'}),
-            dcc.Dropdown(
-                id='tab3-data-dropdown',
-                options=[
-                    {'label': 'Validation Data', 'value': 'validation'},
-                    {'label': 'Blind Test Data', 'value': 'blind_test'}
-                ],
-                value='validation',  # Default selection
-                style={'width': '300px', 'display': 'inline-block'}
+                value='Default XGBoost Validation',  # Default selection
+                style={'width': '400px', 'display': 'inline-block'}
             ),
         ], style={'marginBottom': '20px'}),
 
         # Graph placeholder for model comparisons
         dcc.Graph(id='model-comparison-graph'),
     ])
+
 
 
 # def render_tab3():
