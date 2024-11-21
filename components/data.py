@@ -108,7 +108,7 @@ def prepare_for_arima_ma(combined_df, target_column):
 
     # Explicitly set the frequency for the index
     if not arima_df.index.freq:
-        arima_df.index = pd.date_range(start=arima_df.index.min(), periods=len(arima_df), freq="ME")
+        arima_df.index = pd.date_range(start=arima_df.index.min(), periods=len(arima_df), freq="QE")
 
     #print(f"ARIMA dataset size: {arima_df.shape[0]}")  #ARIMA dataset size: 31
 
