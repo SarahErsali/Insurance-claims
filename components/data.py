@@ -97,19 +97,41 @@ def prepare_for_arima_ma(combined_df, target_column):
     if 'Date' not in combined_df.columns or target_column not in combined_df.columns:
         raise ValueError("The combined_df must contain 'Date' and target_column for ARIMA/MA modeling.")
     
+    print("\nStarting ARIMA/MA preprocessing")
+
     # Extract necessary columns
     arima_df = combined_df[['Date', target_column]].copy()
+    #print(f"Initial arima_df shape: {arima_df.shape}")
+    #print(f"Initial arima_df head:\n{arima_df.head()}")
 
     # Drop rows with NaN in the target column
-    arima_df = arima_df.dropna(subset=[target_column])    
+    arima_df = arima_df.dropna(subset=[target_column])
+    #print(f"Shape after dropping NaNs in target column: {arima_df.shape}")
+    #print(f"Sample of arima_df after dropping NaNs:\n{arima_df.head()}")    
 
     # Set Date as index (optional, based on ARIMA/MA requirements)
     arima_df.set_index('Date', inplace=True)
+    #print(f"arima_df after setting 'Date' as index:\n{arima_df.head()}")
+    #print(f"arima_df index type: {type(arima_df.index)}")
 
     # Explicitly set the frequency for the index
     if not arima_df.index.freq:
-        arima_df.index = pd.date_range(start=arima_df.index.min(), periods=len(arima_df), freq="QE")
+        arima_df.index = pd.date_range(start=arima_df.index.min(), periods=len(arima_df), freq="QS")
+        print("Frequency set for arima_df index.")
+    else:
+        print("Frequency already set for arima_df index.")
 
+    # Check for missing periods
+    missing_periods = pd.date_range(start=arima_df.index.min(), end=arima_df.index.max(), freq="QS").difference(arima_df.index)
+    if len(missing_periods) > 0:
+        print(f"Missing periods in the time series: {missing_periods}")
+    else:
+        print("No missing periods in the time series.")
+
+    # Final check
+    #print(f"Final arima_df shape: {arima_df.shape}")
+    #print(f"Final arima_df head:\n{arima_df.head()}")
+    #print(f"arima_df index frequency: {arima_df.index.freq}")
     #print(f"ARIMA dataset size: {arima_df.shape[0]}")  #ARIMA dataset size: 31
 
     return arima_df
