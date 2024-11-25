@@ -15,148 +15,92 @@ else:
     results = None
 
 def render_tab3():
-    return html.Div([
-        # Title and description for the section
-        html.H3("Models Evaluation", style={
-            'fontWeight': 'bold',
-            'textAlign': 'left',
-            'fontSize': '30px',
-            'marginTop': '3cm'
-        }),
-
-        html.P(
-            "The line plot shows the predictions of various models—XGBoost, LightGBM, and their optimized versions—"
-            "against the actual values for 'Claims Incurred' over a period. The dotted black line represents the actual observed values, "
-            "while the colored lines show the predictions of the models.",
-            style={
-                'fontSize': '16px',
-                'textAlign': 'left',
-                'lineHeight': '2.0',
-            }
-        ),
-
-        # Bullet points explaining the models
-        html.Ul([
-            html.Li([
-                html.Span("XGBoost: ", style={'fontWeight': 'bold'}),
-                "In flatter regions or moderate fluctuations, XGBoost tends to smooth out predictions but follows the overall pattern with smaller deviations."
-            ], style={'fontSize': '16px', 'textAlign': 'left', 'lineHeight': '2'}),
-
-            html.Li([
-                html.Span("LightGBM: ", style={'fontWeight': 'bold'}),
-                "LightGBM appears less stable, with larger prediction errors in regions with moderate claim variations."
-            ], style={'fontSize': '16px', 'textAlign': 'left', 'lineHeight': '2'}),
-        ], style={'textAlign': 'left', 'marginBottom': '2.5cm'}),
-
-        # Instructions for selecting country and model
-        html.P("Select the country and model to evaluate:", style={
-            'textAlign': 'left',
-            'fontSize': '20px',
-            'marginTop': '4px',
-            'marginBottom': '10px'
-        }),
-
-        # Dropdown for country selection
-        html.Div([
-            html.Label("Country:", style={'fontWeight': 'bold', 'fontSize': '16px'}),
-            dcc.Dropdown(
-                id='tab3-country-dropdown',
-                options=[
-                    {'label': 'All Countries', 'value': 'All Countries'}
-                ] + [{'label': country, 'value': country} for country in results['country_metrics'].keys()],
-                value='All Countries',  # Default selection
-                style={'width': '300px', 'display': 'inline-block', 'marginRight': '20px'}
-            ),
-
-            # Dropdown for model and dataset selection
-            html.Label("Model and Dataset:", style={'fontWeight': 'bold', 'fontSize': '16px'}),
-            dcc.Dropdown(
-                id='tab3-model-dropdown',
-                options=[
-                    {'label': 'Default XGBoost (Validation)', 'value': 'Default XGBoost Validation'},
-                    {'label': 'Default XGBoost (Blind Test)', 'value': 'Default XGBoost Blind Test'},
-                    {'label': 'Default LightGBM (Validation)', 'value': 'Default LightGBM Validation'},
-                    {'label': 'Default LightGBM (Blind Test)', 'value': 'Default LightGBM Blind Test'},
-                    {'label': 'Retrained XGBoost (Blind Test)', 'value': 'Retrained XGBoost Blind Test'},
-                    {'label': 'Retrained LightGBM (Blind Test)', 'value': 'Retrained LightGBM Blind Test'},
-                    {'label': 'ARIMA (Blind Test)', 'value': 'ARIMA'},
-                    {'label': 'Moving Average (Blind Test)', 'value': 'Moving Average'}
+    return html.Div(
+        [
+            # Container for dropdowns (left side)
+            html.Div(
+                [
+                    # Dropdown for country selection
+                    html.Div(
+                        [
+                            html.Label("Select Country:", style={'fontWeight': 'bold', 'fontSize': '18px', 'textAlign': 'left'}),
+                            dcc.Dropdown(
+                                id='tab3-country-dropdown',
+                                options=[
+                                    {'label': 'All Countries', 'value': 'All Countries'}
+                                ] + [{'label': country, 'value': country} for country in results['country_metrics'].keys()],
+                                value='All Countries',  # Default selection
+                                style={
+                                    'width': '300px',
+                                    'marginBottom': '20px',
+                                    'fontSize': '14px',  # Adjust font size for consistency
+                                    'padding': '8px',  # Add padding for dropdown
+                                }
+                            ),
+                        ],
+                        style={'textAlign': 'left'}  # Ensure left alignment for the container
+                    ),
+                    # Dropdown for model and dataset selection
+                    html.Div(
+                        [
+                            html.Label("Select Model:", style={'fontWeight': 'bold', 'fontSize': '18px', 'textAlign': 'left'}),
+                            dcc.Dropdown(
+                                id='tab3-model-dropdown',
+                                options=[
+                                    {'label': 'Default XGBoost (Validation)', 'value': 'Default XGBoost Validation'},
+                                    {'label': 'Default XGBoost (Blind Test)', 'value': 'Default XGBoost Blind Test'},
+                                    {'label': 'Default LightGBM (Validation)', 'value': 'Default LightGBM Validation'},
+                                    {'label': 'Default LightGBM (Blind Test)', 'value': 'Default LightGBM Blind Test'},
+                                    {'label': 'Retrained XGBoost (Blind Test)', 'value': 'Retrained XGBoost Blind Test'},
+                                    {'label': 'Retrained LightGBM (Blind Test)', 'value': 'Retrained LightGBM Blind Test'},
+                                    {'label': 'ARIMA (Blind Test)', 'value': 'ARIMA'},
+                                    {'label': 'Moving Average (Blind Test)', 'value': 'Moving Average'}
+                                ],
+                                value='Default XGBoost Validation',  # Default selection
+                                style={
+                                    'width': '300px',
+                                    'fontSize': '14px',  # Adjust font size for consistency
+                                    'padding': '8px',  # Add padding for dropdown
+                                }
+                            ),
+                        ],
+                        style={'textAlign': 'left'}  # Ensure left alignment for the container
+                    ),
                 ],
-                value='Default XGBoost Validation',  # Default selection
-                style={'width': '400px', 'display': 'inline-block'}
+                style={
+                    'width': '25%',  # Adjust width of dropdown container
+                    'padding': '20px',
+                    'boxShadow': '0 0 10px rgba(0,0,0,0.1)',  # Add light shadow for dropdown container
+                    'display': 'flex',
+                    'flexDirection': 'column',
+                    'alignItems': 'flex-start',  # Align everything to the left
+                    'backgroundColor': 'white',  # Ensure white background for the dropdown section
+                    'borderRadius': '10px',  # Optional: Rounded corners for dropdown container
+                    'marginRight': '20px',  # Add spacing between dropdown and graph
+                }
             ),
-        ], style={'marginBottom': '20px'}),
 
-        # Graph placeholder for model comparisons
-        dcc.Graph(id='model-comparison-graph'),
-    ])
+            # Graph container (right side)
+            html.Div(
+                dcc.Graph(
+                    id='model-comparison-graph',
+                    config={'displayModeBar': True},  # Display Plotly toolbar
+                ),
+                style={
+                    'width': '75%',  # Further increased width of the graph
+                    'padding': '20px',
+                    'backgroundColor': 'white',  # White background for the graph
+                    'borderRadius': '10px',  # Optional: Rounded corners for better aesthetics
+                    'boxShadow': '0 0 10px rgba(0, 0, 0, 0.1)',  # Add shadow for the graph container
+                }
+            ),
+        ],
+        style={
+            'display': 'flex',
+            'flexDirection': 'row',
+            'height': '100vh',
+            'backgroundColor': 'white',  # Set entire page background to white
+            'padding': '20px',  # Add padding around the entire layout
+        }
+    )
 
-
-
-# def render_tab3():
-#     return html.Div([
-#         # Title and description for the section
-#         html.H3("Models Evaluation", style={
-#             'fontWeight': 'bold', 
-#             'textAlign': 'left', 
-#             'fontSize': '30px', 
-#             'marginTop': '3cm'
-#         }),
-
-#         html.P(
-#             "The line plot shows the predictions of various models—XGBoost, LightGBM, and their optimized versions—"
-#             "against the actual values for 'Claims Incurred' over a period. The dotted black line represents the actual observed values, "
-#             "while the colored lines show the predictions of the models.",
-#             style={
-#                 'fontSize': '16px', 
-#                 'textAlign': 'left', 
-#                 'lineHeight': '2.0',
-#             }
-#         ),
-
-#         # Bullet points explaining the models
-#         html.Ul([
-#             html.Li([
-#                 html.Span("XGBoost: ", style={'fontWeight': 'bold'}),
-#                 "In flatter regions or moderate fluctuations, XGBoost tends to smooth out predictions but follows the overall pattern with smaller deviations."
-#             ], style={'fontSize': '16px', 'textAlign': 'left', 'lineHeight': '2'}),
-            
-#             html.Li([
-#                 html.Span("LightGBM: ", style={'fontWeight': 'bold'}),
-#                 "LightGBM appears less stable, with larger prediction errors in regions with moderate claim variations."
-#             ], style={'fontSize': '16px', 'textAlign': 'left', 'lineHeight': '2'}),
-#         ], style={'textAlign': 'left', 'marginBottom': '2.5cm'}),
-
-#         # Instructions for model selection dropdown
-#         html.P("Select the models and datasets (Validation or Blind Test) you would like to evaluate", style={
-#             'textAlign': 'left', 
-#             'fontSize': '20px', 
-#             'marginTop': '4px', 
-#             'marginBottom': '5px'
-#         }),
-
-#         # Updated dropdown with options for each combination of default and optimized models on validation and blind test
-#         dcc.Dropdown(
-#             id='model-dropdown-prediction',
-#             options=[
-#                 {'label': 'Default XGBoost (Validation)', 'value': 'xgb_default_val'},
-#                 {'label': 'Default XGBoost (Blind Test)', 'value': 'xgb_default_blind_test'},
-#                 {'label': 'Optimized XGBoost', 'value': 'xgb_optimized'},
-#                 {'label': 'Default LightGBM (Validation)', 'value': 'lgb_default_val'},
-#                 {'label': 'Default LightGBM (Blind Test)', 'value': 'lgb_default_blind_test'},
-#                 {'label': 'Optimized LightGBM', 'value': 'lgb_optimized'},
-#             ],
-#             value=['xgb_default_val', 'lgb_default_val'],  # Set default selections
-#             multi=True,
-#             style={
-#                 'width': '500px',
-#                 'display': 'inline-block',
-#                 'marginTop': '20px',
-#                 'marginLeft': '-10cm',
-#                 'marginBottom': '15px'
-#             }
-#         ),
-
-#         # Graph placeholder for model comparisons
-#         dcc.Graph(id='model-comparison-graph'),
-#     ])

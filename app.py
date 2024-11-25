@@ -237,25 +237,25 @@ def update_model_predictions(selected_country, selected_model):
         # elif model_name == 'Moving Average':
         #     print(f"Moving Average Metrics: {results['country_metrics'][selected_country]['Moving Average']}")  # Debugging statement
 
-        # # Align indices for actual values and predictions
-        # if hasattr(actual_values, "index") and hasattr(predictions, "index"):
-        #     actual_values = actual_values.reindex(predictions.index).dropna()
-        #     predictions = predictions.loc[actual_values.index]
-        # elif len(actual_values) != len(predictions):
-        #     # Fallback to range index if lengths differ
-        #     actual_values = pd.Series(actual_values).reset_index(drop=True)
-        #     predictions = pd.Series(predictions).reset_index(drop=True)
-
         # Align indices for actual values and predictions
         if hasattr(actual_values, "index") and hasattr(predictions, "index"):
-            # Align actual_values and predictions by their shared indices
-            aligned_indices = actual_values.index.intersection(predictions.index)
-            actual_values = actual_values.loc[aligned_indices]
-            predictions = predictions.loc[aligned_indices]
+            actual_values = actual_values.reindex(predictions.index).dropna()
+            predictions = predictions.loc[actual_values.index]
         elif len(actual_values) != len(predictions):
-            # Warn about mismatched lengths
-            print("Warning: Actual values and predictions have mismatched lengths.")
-            return html.Div("Error: Mismatched lengths between actual values and predictions.", style={"color": "red"})
+            # Fallback to range index if lengths differ
+            actual_values = pd.Series(actual_values).reset_index(drop=True)
+            predictions = pd.Series(predictions).reset_index(drop=True)
+
+        # # Align indices for actual values and predictions
+        # if hasattr(actual_values, "index") and hasattr(predictions, "index"):
+        #     # Align actual_values and predictions by their shared indices
+        #     aligned_indices = actual_values.index.intersection(predictions.index)
+        #     actual_values = actual_values.loc[aligned_indices]
+        #     predictions = predictions.loc[aligned_indices]
+        # elif len(actual_values) != len(predictions):
+        #     # Warn about mismatched lengths
+        #     print("Warning: Actual values and predictions have mismatched lengths.")
+        #     return html.Div("Error: Mismatched lengths between actual values and predictions.", style={"color": "red"})
 
         # Add actual values to the plot
         if actual_values is not None and len(actual_values) > 0:
@@ -281,12 +281,26 @@ def update_model_predictions(selected_country, selected_model):
 
     # Update the layout of the figure
     fig.update_layout(
-        title=f"{selected_model} vs Actual for {selected_country}",
-        xaxis_title="Date",
-        yaxis_title="NET Claims Incurred",
-        legend_title="Legend",
-        template="plotly_dark"
-    )
+    title=f"{selected_model} vs Actual for {selected_country}",
+    xaxis_title="Date",
+    yaxis_title="NET Claims Incurred",
+    legend_title="Legend",
+    xaxis=dict(
+        showgrid=False,  # Disable x-axis grid
+        showline=True,   # Show x-axis line
+        linecolor='black',  # Black color for the axis line
+        linewidth=0.5       # Narrow x-axis line
+    ),
+    yaxis=dict(
+        showgrid=False,  # Disable y-axis grid
+        showline=True,   # Show y-axis line
+        linecolor='black',  # Black color for the axis line
+        linewidth=1       # Narrow y-axis line
+    ),
+    paper_bgcolor='white',  # Background of the entire plot area
+    plot_bgcolor='white'    # Background of the graph itself
+)
+
 
     return fig
 
