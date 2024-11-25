@@ -4,15 +4,33 @@ def render_tab1():
     return html.Div([
         # Instructional Text for Upload
         html.P(
-            "To begin data cleaning and analysis, please upload your database file(s) below. You may upload multiple CSV files, which will be used for building machine learning models (e.g., XGBoost, LightGBM) and time series models (e.g., ARIMA, Moving Average). Note that only CSV file formats are accepted.",
-            style={'textAlign': 'left', 'fontSize': '18px', 'marginBottom': '20px'}
+            "Start your data cleaning and analysis journey by uploading your database file(s) below. You can upload multiple CSV files, which will serve as the foundation for building advanced machine learning models (such as XGBoost and LightGBM) and time series models (including ARIMA and Moving Average). Please ensure that your files are in CSV format, as only this format is supported for seamless processing.",
+            style={
+                'lineHeight': '2',  # Line spacing
+                'marginBottom': '30px',  # Bottom margin for spacing
+                'textAlign': 'justify',  # Justified alignment
+            }
         ),
 
         # File Upload Section
         html.Div([
             dcc.Upload(
                 id='upload-data',
-                children=html.Button('Upload Files', style={'cursor': 'pointer'}),
+                children=html.Button(
+                    'Upload Files', 
+                    style={
+                        "padding": "15px 30px",  # Increased padding for larger button size
+                        "fontSize": "18px",  # Increased font size for better readability
+                        "fontWeight": "bold",  # Bold for emphasis
+                        "backgroundColor": "#007BFF",  # Bootstrap primary blue
+                        "color": "white",  # White text for contrast
+                        "border": "none",  # Remove border
+                        "borderRadius": "5px",  # Rounded corners
+                        "cursor": "pointer",  # Pointer cursor for interactivity
+                        "textAlign": "center",  # Center text in the button
+                        "boxShadow": "0px 4px 6px rgba(0, 0, 0, 0.1)"  # Add subtle shadow
+                    }
+                ),
                 multiple=True
             ),
             html.Div(id='upload-status', style={'marginTop': '10px', 'fontWeight': 'bold', 'color': 'green'})
@@ -22,7 +40,23 @@ def render_tab1():
         html.Div(id='processed-data-table', style={'marginTop': '20px'}),
 
         # Generate results button and status output
-        html.Button('Generate Results', id='generate-button', style={'marginTop': '20px'}),
+        html.Button(
+            'Generate Results',
+            id='generate-button',
+            style={
+                "marginTop": "30px",
+                "padding": "15px 30px",  # Increased padding for larger button size
+                "fontSize": "18px",  # Increased font size for better readability
+                "fontWeight": "bold",  # Bold for emphasis
+                "backgroundColor": "#007BFF",  # Bootstrap primary blue
+                "color": "white",  # White text for contrast
+                "border": "none",  # Remove border
+                "borderRadius": "5px",  # Rounded corners
+                "cursor": "pointer",  # Pointer cursor for interactivity
+                "textAlign": "center",  # Center text in the button
+                "boxShadow": "0px 4px 6px rgba(0, 0, 0, 0.1)"  # Add subtle shadow
+            }
+        ),
         html.Div(id='results-generation-status', style={'marginTop': '10px', 'fontWeight': 'bold', 'color': 'green'}),
     ], style={
         'paddingTop': '2cm',
@@ -32,5 +66,6 @@ def render_tab1():
         'textAlign': 'left',  
         'maxWidth': '90%',
         'marginLeft': 'auto',
-        'marginRight': 'auto'
+        'marginRight': 'auto',
+        'lineHeight': '1.8',  # Adjusted line height for consistency
     })
