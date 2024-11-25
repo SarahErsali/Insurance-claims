@@ -36,10 +36,8 @@ def split_data(combined_df, train_start, train_end, val_start, val_end, blind_te
     val_data = combined_df[(combined_df['Date'] >= val_start) & (combined_df['Date'] <= val_end)]
     blind_test_data = combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]
 
-    print("Rows in Blind Test Data:")
-    print(blind_test_data)  # Print the blind test rows
-
-    # Debugging: Print the sizes of the splits
+    # Debugging
+    print("Rows in Blind Test Data: {blind_test_data}")
     #print(f"Train data size: {train_data.shape[0]}")  #Train data size: 22
     #print(f"Validation data size: {val_data.shape[0]}")  #Validation data size: 5
     #print(f"Blind test data size: {blind_test_data.shape[0]}")  #Blind test data size: 4
@@ -59,7 +57,7 @@ def split_data(combined_df, train_start, train_end, val_start, val_end, blind_te
 
 
 def train_and_evaluate_model(model, X_train, y_train, X_val, y_val, X_blind_test=None, y_blind_test=None, combined_df=None, target_column=None):
-    # Dynamically add verbose=-1 if the model is LightGBM to suppress repetitive warnings in the console
+    # suppress warnings for LightGBM
     if model.__class__.__name__ == 'LGBMClassifier' or model.__class__.__name__ == 'LGBMRegressor':
         model.set_params(verbose=-1)
 
@@ -121,7 +119,7 @@ def tune_model(model_class, X_train, y_train, X_val, y_val, trial_params):
         
             #print("Trial parameters generated:", params)
 
-            # Dynamically add verbose=-1 if the model is LightGBM to suppress repetative warnings in the console
+            # suppress warnings for LightGBM
             if model_class.__name__ == 'LGBMClassifier' or model_class.__name__ == 'LGBMRegressor':
                 params['verbose'] = -1
         
@@ -133,7 +131,7 @@ def tune_model(model_class, X_train, y_train, X_val, y_val, trial_params):
         
         except TypeError as e:
             print(f"Error in parameter setting: {e}")
-            raise e  # Re-raise to capture Optuna logging
+            raise e  
 
 
     study = optuna.create_study(direction='minimize')
@@ -147,7 +145,7 @@ def tune_model(model_class, X_train, y_train, X_val, y_val, trial_params):
 
 def retrain_and_evaluate(model_class, best_params, X_combined, y_combined, X_blind_test, y_blind_test, combined_df=None, target_column=None):
     
-    # Dynamically add verbose=-1 if the model is LightGBM to suppress repetative warnings in the console
+    # suppress warnings for LightGBM
     if model_class.__name__ == 'LGBMClassifier' or model_class.__name__ == 'LGBMRegressor':
         best_params['verbose'] = -1
 
@@ -195,10 +193,8 @@ def train_arima_model(y_combined, blind_test_data, blind_test_steps=None, future
     # Debugging statements
     print(f"After dropping 5 rows, y_combined length: {len(y_combined)}, blind_test_data length: {len(blind_test_data)}, blind_test_steps: {blind_test_steps}, future_forecast_steps: {future_forecast_steps}")  #y_combined length: 26 (31 total rows - 5 dropped rows), blind_test_data length: 4, forecast_steps: 4
     #print(f"First few values of y_combined:\n{y_combined.head()}")   #correct values
-    print("Rows in Blind Test Data:")
-    print(blind_test_data)  # Print the blind test rows
-    print("Rows in Blind Test Steps:")
-    print(blind_test_steps)
+    print("Rows in Blind Test Data: {blind_test_data}")
+    print("Rows in Blind Test Steps: {blind_test_steps}")
 
     # Default blind test steps to the length of the blind test data
     if blind_test_steps is None:
@@ -258,14 +254,8 @@ def train_arima_model(y_combined, blind_test_data, blind_test_steps=None, future
         # Forecast for the future
         future_arima_forecast = arima_model_fitted.get_forecast(steps=future_forecast_steps).predicted_mean
 
-        # # Align indices for forecasts. This will ensure that both arima_forecast and future_arima_forecast have indices properly aligned with the original time series
-        # if isinstance(y_combined.index, pd.DatetimeIndex):
-        #     start_date = y_combined.index[-1] + pd.tseries.offsets.DateOffset(freq=y_combined.index.freq)
-        #     arima_forecast.index = pd.date_range(start=start_date, periods=blind_test_steps, freq=y_combined.index.freq)
-        #     future_arima_forecast.index = pd.date_range(start=start_date + pd.tseries.offsets.DateOffset(freq=y_combined.index.freq * blind_test_steps),
-        #                                                 periods=future_forecast_steps, freq=y_combined.index.freq)
-
-        # # Handle invalid forecasts for NaN
+        
+        # # Handle invalid forecasts with mean method
         # if arima_forecast.isnull().any() or np.isinf(arima_forecast).any():
         #     print("Warning: Invalid values in ARIMA blind test forecast. Filling with mean of y_combined.")
         #     arima_forecast = pd.Series([y_combined.mean()] * blind_test_steps)
@@ -274,7 +264,7 @@ def train_arima_model(y_combined, blind_test_data, blind_test_steps=None, future
         #     print("Warning: Invalid values in ARIMA future forecast. Filling with mean of y_combined.")
         #     future_arima_forecast = pd.Series([y_combined.mean()] * future_forecast_steps)
         
-        # Handle invalid forecasts
+        # Handle invalid forecasts with forward/backward filling method
         if arima_forecast.isnull().any() or np.isinf(arima_forecast).any():
             print("Warning: Invalid values in ARIMA blind test forecast. Filling using forward and backward fill.")
             arima_forecast = arima_forecast.fillna(method='ffill').fillna(method='bfill')
@@ -1059,7 +1049,7 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
 
     # Select the best model for each country
     results = select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_mape=0.2)
-
+    print("Best Models in results:", results.get("best_models"))
     return results
 
 

@@ -7,7 +7,6 @@ from components.functions import get_or_generate_results
 
 # Load results from file
 results_file = 'results.pkl'
-# Safely load results or set to None
 if os.path.exists(results_file):
     results = joblib.load(results_file)
     print("Results successfully loaded in tab3.")

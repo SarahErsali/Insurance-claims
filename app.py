@@ -11,7 +11,7 @@ from components.tabs.tab2 import render_tab2
 from components.tabs.tab1 import render_tab1
 from components.tabs.tab3 import render_tab3
 from components.tabs.tab4 import render_tab4
-from components.tabs.tab5 import render_tab5
+from components.tabs.tab5 import generate_best_model_table
 #import components.data as data
 from components.data import load_and_process_uploaded_data
 import base64
@@ -27,6 +27,7 @@ import os
 try:
     results = joblib.load('results.pkl') 
     print("Results successfully loaded.")
+    print("Best Models:", results.get("best_models"))
 except FileNotFoundError:
     print("Error: results.pkl not found. Generate the results before running the dashboard.")
     results = None
@@ -80,7 +81,13 @@ def render_content(tab):
     elif tab == 'tab-4':
         return render_tab4()
     elif tab == 'tab-5':
-        return render_tab5()
+        if results is None:
+            return html.Div("Error: No results found. Please generate the results and try again.", style={"color": "red"})
+        
+        # Pass the global results variable to the table generator
+        return generate_best_model_table(results)
+    else:
+        return html.Div("Invalid tab selected.")
 
 # --------------------- Callback for handling file upload and processing ---------------------
 
@@ -269,106 +276,25 @@ def update_model_predictions(selected_country, selected_model):
 
 
 
-# @app.callback(
-#     Output('model-comparison-graph', 'figure'),
-#     Input('tab3-country-dropdown', 'value'),
-#     Input('tab3-model-dropdown', 'value'),
-# )
-# def update_model_predictions(selected_country, selected_model, selected_data):
-   
-#     global results
+@app.callback(
+    Output("download-table", "data"),
+    Input("download-button", "n_clicks"),
+    prevent_initial_call=True,
+)
+def download_table(n_clicks):
+    if results is None:
+        return None
+    
+    # Extract best models as a DataFrame
+    best_models = results.get("best_models", {})
+    data = [{"Country": country, "Best Fit Model for Life LOB Data": model_info["model"]} for country, model_info in best_models.items()]
+    df = pd.DataFrame(data)
 
-#     # Debugging: Log the selected country and keys in results['country_metrics']
-#     print(f"Selected Country: {selected_country}")
-#     print(f"Available Countries: {list(results['country_metrics'].keys())}")
+    # Convert the DataFrame to a downloadable CSV
+    return dcc.send_data_frame(df.to_csv, "best_models.csv", index=False)
 
-#     # Check if results are loaded
-#     if results is None:
-#         raise ValueError("Results have not been generated or loaded. Please ensure results.pkl exists or generate the results.")
 
-#     # Create a plotly figure
-#     fig = go.Figure()
 
-#     try:
-#         # Debugging: Check selected country and model
-#         print(f"Selected Country: {selected_country}")
-#         print(f"Selected Model: {selected_model}")
-        
-
-#         # Handle "All Countries" option
-#         if selected_country == 'All Countries':
-#             predictions = results['ml_predictions']['all_countries_predictions'].get(selected_model, None)
-#             if selected_data == 'validation':
-#                 actual_values = results['ml_predictions']['validation_actuals'].get(selected_model, None)
-#             elif selected_data == 'blind_test':
-#                 actual_values = results['ml_predictions']['blind_test_actuals'].get(selected_model, None)
-#             else:
-#                 actual_values = None
-
-#         else:
-#             # Get country-specific data
-#             country_metrics = results['country_metrics'].get(selected_country, {})
-#             print(f"Country Metrics for {selected_country}: {list(country_metrics.keys())}")  # Debugging statement
-#             model_metrics = country_metrics.get(selected_model, {})
-#             print(f"Model Metrics for {selected_model}: {list(model_metrics.keys())}")  # Debugging statement
-
-#             if selected_data == 'blind_test':
-#                 actual_values = model_metrics.get('blind_test_actuals', None)
-#                 predictions = model_metrics.get('blind_test_predictions', None)
-#             elif selected_data == 'validation':
-#                 actual_values = model_metrics.get('validation_actuals', None)
-#                 predictions = model_metrics.get('validation_predictions', None)
-#             else:
-#                 actual_values = None
-#                 predictions = None
-
-#         # Debugging: Check what is retrieved
-#         print(f"Actual Values: {actual_values}")
-#         print(f"Predictions: {predictions}")
-
-        
-#         # Specific debugging for ARIMA and Moving Average
-#         if selected_model == 'ARIMA':
-#             print(f"ARIMA Metrics: {results['country_metrics'][selected_country]['ARIMA']}")  # Debugging statement
-#         elif selected_model == 'Moving Average':
-#             print(f"Moving Average Metrics: {results['country_metrics'][selected_country]['Moving Average']}")  # Debugging statement
-
-#         # Raise an error if both predictions and actual values are missing
-#         if predictions is None and actual_values is None:
-#             raise KeyError(f"No data found for {selected_country}, {selected_model}.")
-
-#         # Add actual values to the plot
-#         if actual_values is not None and len(actual_values) > 0:
-#             fig.add_trace(go.Scatter(
-#                 x=actual_values.index if hasattr(actual_values, 'index') else list(range(len(actual_values))),
-#                 y=actual_values.values if hasattr(actual_values, 'values') else actual_values,
-#                 mode='lines',
-#                 name='Actual',
-#                 line=dict(dash='dot')  
-#             ))
-
-#         # Add model predictions to the plot
-#         if predictions is not None and len(predictions) > 0:
-#             fig.add_trace(go.Scatter(
-#                 x=predictions.index if hasattr(predictions, 'index') else list(range(len(predictions))),
-#                 y=predictions.values if hasattr(predictions, 'values') else predictions,
-#                 mode='lines',
-#                 name=f'{selected_model}'
-#             ))
-
-#     except KeyError as e:
-#         raise ValueError(f"Error accessing data for {selected_country}, {selected_model}: {e}")
-
-#     # Update the layout of the figure
-#     fig.update_layout(
-#         title=f"{selected_model} vs Actual for {selected_country}",
-#         xaxis_title="Date",
-#         yaxis_title="NET Claims Incurred",
-#         legend_title="Legend",
-#         template="plotly_dark"  
-#     )
-
-#     return fig
 
 
 
