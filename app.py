@@ -316,6 +316,7 @@ def update_model_predictions(selected_country, selected_model):
     prevent_initial_call=True,
 )
 def download_table(n_clicks):
+    global results
     if results is None:
         return None
     

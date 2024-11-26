@@ -21,7 +21,7 @@ def generate_best_model_table(results):
     df = df.sort_values(by="Country").reset_index(drop=True)
 
     # Generate Dash DataTable with a download button
-    table = html.Div(
+    layout = html.Div(
         [
             # Instructional paragraph with top spacing
             html.P(
@@ -38,31 +38,34 @@ def generate_best_model_table(results):
                     "paddingRight": "5cm",  # Padding on the right for alignment
                 }
             ),
-            # Button placed under the instructional text
+            # Download Button
             html.Div(
-                html.Button(
-                    "Download Table",
-                    id="download-button",
-                    style={
-                        "marginTop": "20px",
-                        "padding": "15px 30px",  # Increased padding for larger button size
-                        "fontSize": "18px",  # Increased font size for better readability
-                        "fontWeight": "bold",  # Bold for emphasis
-                        "backgroundColor": "#007BFF",  # Bootstrap primary blue
-                        "color": "white",  # White text for contrast
-                        "border": "none",  # Remove border
-                        "borderRadius": "5px",  # Rounded corners
-                        "cursor": "pointer",  # Pointer cursor for interactivity
-                        "textAlign": "center",  # Center text in the button
-                        "boxShadow": "0px 4px 6px rgba(0, 0, 0, 0.1)"  # Add subtle shadow
-                    },
-                ),
+                [
+                    html.Button(
+                        "Download Table",
+                        id="download-button",
+                        style={
+                            "marginTop": "20px",
+                            "padding": "15px 30px",  # Increased padding for larger button size
+                            "fontSize": "18px",  # Increased font size for better readability
+                            "fontWeight": "bold",  # Bold for emphasis
+                            "backgroundColor": "#007BFF",  # Bootstrap primary blue
+                            "color": "white",  # White text for contrast
+                            "border": "none",  # Remove border
+                            "borderRadius": "5px",  # Rounded corners
+                            "cursor": "pointer",  # Pointer cursor for interactivity
+                            "textAlign": "center",  # Center text in the button
+                            "boxShadow": "0px 4px 6px rgba(0, 0, 0, 0.1)",  # Add subtle shadow
+                        },
+                    ),
+                    dcc.Download(id="download-table"),  # Add the download component
+                ],
                 style={
-                    "textAlign": "left",  # Center-align button within the div
-                    "marginBottom": "30px", 
-                    "paddingLeft": "5cm",  # Align the button with the paragraph
-                    "paddingRight": "5cm"   # Align the button with the paragraph
-                }  
+                    "textAlign": "left",  # align button within the div
+                    "marginBottom": "50px", 
+                    "paddingLeft": "2cm",  # Align the button with the paragraph
+                    "paddingRight": "27.0cm"  # Align the button with the paragraph
+                }
             ),
             # Table placed below the button
             html.Div(
@@ -110,4 +113,4 @@ def generate_best_model_table(results):
             "paddingBottom": "3cm",  # Add space at the bottom of the page
         }
     )
-    return table
+    return layout
