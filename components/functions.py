@@ -37,10 +37,10 @@ def split_data(combined_df, train_start, train_end, val_start, val_end, blind_te
     blind_test_data = combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]
 
     # Debugging
-    print("Rows in Blind Test Data: {blind_test_data}")
-    #print(f"Train data size: {train_data.shape[0]}")  #Train data size: 22
-    #print(f"Validation data size: {val_data.shape[0]}")  #Validation data size: 5
-    #print(f"Blind test data size: {blind_test_data.shape[0]}")  #Blind test data size: 4
+    print(f"Rows in Blind Test Data: {blind_test_data}")
+    print(f"Train data size: {train_data.shape[0]}")  #Train data size: 22
+    print(f"Validation data size: {val_data.shape[0]}")  #Validation data size: 5
+    print(f"Blind test data size: {blind_test_data.shape[0]}")  #Blind test data size: 4
 
     X_train = train_data.drop(columns=[target_column, 'Date', 'Country'])
     y_train = train_data[target_column]
@@ -191,10 +191,10 @@ def train_arima_model(y_combined, blind_test_data, blind_test_steps=None, future
     """
 
     # Debugging statements
-    print(f"After dropping 5 rows, y_combined length: {len(y_combined)}, blind_test_data length: {len(blind_test_data)}, blind_test_steps: {blind_test_steps}, future_forecast_steps: {future_forecast_steps}")  #y_combined length: 26 (31 total rows - 5 dropped rows), blind_test_data length: 4, forecast_steps: 4
+    print(f"---- After dropping 5 rows, y_combined length: {len(y_combined)}, blind_test_data length: {len(blind_test_data)}, blind_test_steps: {blind_test_steps}, future_forecast_steps: {future_forecast_steps}")  #y_combined length: 26 (31 total rows - 5 dropped rows), blind_test_data length: 4, forecast_steps: 4
     #print(f"First few values of y_combined:\n{y_combined.head()}")   #correct values
-    print("Rows in Blind Test Data: {blind_test_data}")
-    print("Rows in Blind Test Steps: {blind_test_steps}")
+    print(f"Rows in Blind Test Data: {blind_test_data}")
+    print(f"Rows in Blind Test Steps: {blind_test_steps}")
 
     # Default blind test steps to the length of the blind test data
     if blind_test_steps is None:
@@ -275,7 +275,7 @@ def train_arima_model(y_combined, blind_test_data, blind_test_steps=None, future
 
         # Debugging: Print forecasts
         print(f"ARIMA forecast (blind test): {arima_forecast}")
-        #print(f"ARIMA forecast (future): {future_arima_forecast}")
+        print(f"ARIMA forecast (future): {future_arima_forecast}")
 
         return arima_model_fitted, arima_forecast, future_arima_forecast
 
@@ -454,8 +454,8 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
             arima_models[country] = arima_model
             arima_forecast_reset = arima_forecast.reset_index(drop=True)
             y_blind_test_reset = y_blind_test_country.reset_index(drop=True)
-            print(f"Mean of actual values (y_blind_test_country_arima): {np.mean(y_blind_test_country)}")
-            print(f"Mean of forecasted values (arima_forecast): {np.mean(arima_forecast)}")
+            #print(f"Mean of actual values (y_blind_test_country): {np.mean(y_blind_test_country)}")
+            #print(f"Mean of forecasted values (arima_forecast): {np.mean(arima_forecast)}")
             print(np.mean(arima_forecast_reset - y_blind_test_reset))
             arima_metrics = {
                 'blind_test': {
@@ -518,7 +518,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, target_col
 # # model_dicts is models
 # # model_types is the dictionary defining each model's type
 
-def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
+def run_backtest(model_dicts, model_types, combined_df, target_column, cycles, n_lags):
     """
     Run backtesting for all models (ML, ARIMA, MA) on the combined dataset.
 
@@ -528,6 +528,7 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
         combined_df (pd.DataFrame): Combined dataset with all countries.
         target_column (str): The target column for predictions.
         cycles (int): Number of backtesting cycles.
+        n_lags (int): Number of future time steps (lags) to predict.
 
     Returns:
         dict: Backtesting results for each country and model.
@@ -557,11 +558,10 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
         for model_name, model in all_models.items():
             model_type = model_types[model_name]
             print(f"Back testing evaluating model: {model_name} (Type: {model_type})")  # Debugging statement
-            backtest_metrics = backtest_model(country_data, y_train_arima, model, model_type, target_column, cycles=cycles, future_forecast_steps=3)
+            # Perform backtesting with n_lags
+            backtest_metrics = backtest_model(country_data, y_train_arima, model, model_type, target_column, cycles=cycles, n_lags=n_lags)
             model_results[model_name] = backtest_metrics
 
-            # Save backtesting results for this model
-            #model_results[model_name] = backtest_metrics
 
         print(f"Completed backtesting for {country}.")  # Debugging statement
         backtesting_results[country] = model_results
@@ -570,7 +570,7 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
     return backtesting_results
 
 
-def backtest_model(country_data, y_train_arima, model, model_type, target_column, window=26, test_size=5, cycles=3, future_forecast_steps=3):
+def backtest_model(country_data, model, model_type, target_column, window=25, cycles=3, n_lags=4):
     """
     Perform backtesting for a single model (ML, ARIMA, MA) on a country's data.
 
@@ -581,76 +581,62 @@ def backtest_model(country_data, y_train_arima, model, model_type, target_column
         model_type (str): The type of the model ('xgb', 'arima', 'ma').
         target_column (str): The target column for predictions.
         window (int): Training window size.
-        test_size (int): Testing window size.
         cycles (int): Number of backtesting cycles.
+        n_lags (int): Number of future time steps (lags) to predict.
 
     Returns:
         dict: Metrics for each backtesting cycle.
     """
     print(f"Starting backtest for model type: {model_type}")  # Debugging statement
-    cycle_metrics = {'bias': [], 'accuracy': [], 'mape': [], 'coc': []}
-    prev_cycle_preds = None
+    cycle_metrics = []
 
     # Determine model type
     is_ml_model = model_type in ['xgb', 'lgb']
     is_arima_model = model_type == 'arima'
     is_ma_model = model_type == 'ma'
 
-    # Define blind test data. This line ensures that the blind test data (y_blind_test_country) is extracted consistently across all model types (ML, ARIMA, MA) without being affected by the ARIMA-specific preprocessing
-    y_blind_test_country = country_data[target_column].iloc[-test_size:]
+    
+    for cycle in range(cycles):
+        print(f"Cycle {cycle + 1}/{cycles}...")  # Debugging statement
+        train_end = window - cycle
+        train_data = country_data.iloc[:train_end]
+        test_data = country_data.iloc[train_end:train_end + n_lags]
 
-    # ARIMA and MA models if applicable
-    if is_arima_model:
-        print("Back testing training ARIMA model...")  # Debugging statement
-        arima_model, arima_blind_test_forecast, _ = train_arima_model(
-            y_combined=y_train_arima,  # Combined training data for ARIMA
-            blind_test_data=y_blind_test_country,  # Blind test set for the specific country
-            blind_test_steps=len(y_blind_test_country),  # Number of steps for the blind test forecast
-            future_forecast_steps=future_forecast_steps  # Number of future steps to forecast
-        )
-    elif is_ma_model:
-        print("Back testing training MA model...")  # Debugging statement
-        ma_model, ma_blind_test_forecast, _ = train_ma_model(
-            y_combined=y_train_arima,
-            blind_test_data=country_data[target_column].iloc[window:],
-            window=4,
-            forecast_steps=test_size
-        )
-    if is_arima_model or is_ma_model:
-        window = 20
-    for i in range(cycles):
-        print(f"Cycle {i + 1}/{cycles}...")  # Debugging statement
-        b_train = country_data.iloc[0:window - i]
-        b_test = country_data.iloc[window - i:]
-        test_size = len(b_test)
+        b_X_train = train_data.drop([target_column, 'Date', 'Country'], axis=1, errors='ignore')
+        b_y_train = train_data[target_column]
+        b_X_test = test_data.drop([target_column, 'Date', 'Country'], axis=1, errors='ignore')
+        b_y_test = test_data[target_column]
 
-        b_X_train = b_train.drop([target_column, 'Date', 'Country'], axis=1, errors='ignore')
-        b_y_train = b_train[target_column]
-        b_X_test = b_test.drop([target_column, 'Date', 'Country'], axis=1, errors='ignore')
-        b_y_test = b_test[target_column]
 
+        preds = []
         if is_ml_model:
-            print(f"Back testing training ML model...")  # Debugging statement
-            model.fit(b_X_train, b_y_train)
-            preds = model.predict(b_X_test)
+            print(f"Back testing training ML model.")  # Debugging statement
+            try:
+                model.fit(b_X_train, b_y_train)
+                preds = model.predict(b_X_test).tolist()
+            except Exception as e:
+                print(f"ML model prediction failed: {e}")
+                preds = [np.nan] * len(b_X_test)
             
         elif is_arima_model:
-            try:
-                print("Back testing: Forecasting with ARIMA model...")  # Debugging statement
-                preds = arima_blind_test_forecast[-test_size:]  # Use ARIMA model for forecasting
-            except Exception as e:
-                print(f"ARIMA model forecasting failed: {e}")
-                preds = np.full(len(b_y_test), np.nan)
-
+            print(f"Back testing training ARIMA model.")  # Debugging statement
+            for lag in range(1, n_lags + 1):
+                try:
+                    forecast = model.forecast(steps=lag)
+                    preds.append(forecast[-1])
+                except Exception as e:
+                    print(f"ARIMA prediction failed: {e}")
+                    preds.append(np.nan)
 
         elif is_ma_model:
-            try:
-                print("Back testing: Forecasting with MA model...")  # Debugging statement
-                preds = ma_blind_test_forecast[-test_size:]   # Use MA model for forecasting
-            except Exception as e:
-                print(f"MA model forecasting failed: {e}")
-                preds = np.full(len(b_y_test), np.nan)
-
+            print(f"Back testing training MA model.")  # Debugging statement
+            for lag in range(1, n_lags + 1):
+                try:
+                    forecast = train_data[target_column].rolling(window=4).mean().iloc[-lag]
+                    preds.append(forecast)
+                except Exception as e:
+                    print(f"Moving Average prediction failed: {e}")
+                    preds.append(np.nan)
         
         # Ensure predictions align with test data
         if len(preds) != len(b_y_test):
@@ -658,7 +644,8 @@ def backtest_model(country_data, y_train_arima, model, model_type, target_column
             if len(preds) == 0:
                 # Handle empty predictions by filling with mean of training set
                 print("Warning: Predictions are empty. Filling with mean of training data.")
-                preds = np.full(len(b_y_test), b_y_train.mean())
+                train_mean = b_y_train.mean()
+                preds = np.full(len(b_y_test), train_mean if not np.isnan(train_mean) else 0)
 
             elif len(preds) > len(b_y_test):
                 # Truncate predictions to match test set length
@@ -668,26 +655,34 @@ def backtest_model(country_data, y_train_arima, model, model_type, target_column
             elif len(preds) < len(b_y_test):
                 # Extend predictions with the last value to match test set length
                 print("Warning: Predictions are shorter than test set. Padding with last prediction value.")
-                padding = [preds[-1]] * (len(b_y_test) - len(preds))
+                last_valid_pred = preds[-1] if not np.isnan(preds[-1]) else (np.nanmean(preds) if not np.isnan(np.nanmean(preds)) else 0)
+                padding = [last_valid_pred] * (len(b_y_test) - len(preds))
                 preds = np.append(preds, padding)
 
 
-        # Calculate metrics if predictions are valid
-        if len(preds) == len(b_y_test) and not np.isnan(preds).all():
-            bias = (np.mean(preds - b_y_test) / np.mean(b_y_test)) * 100
-            accuracy = 100 - mean_absolute_percentage_error(b_y_test, preds) * 100
-            mape = mean_absolute_percentage_error(b_y_test, preds) * 100
+        # Calculate metrics for each lag
+        metrics = []
+        for lag, (y_true, y_pred) in enumerate(zip(b_y_test, preds), start=1):
+            bias = (y_pred - y_true) / y_true * 100
+            mape = mean_absolute_percentage_error([y_true], [y_pred]) * 100
+            accuracy = 100 - mape
 
-            coc = ((np.mean(preds - prev_cycle_preds) / np.mean(prev_cycle_preds)) * 100
-                   if prev_cycle_preds is not None and len(preds) == len(prev_cycle_preds) else np.nan)
+            metrics.append({
+                'lag': lag,
+                'bias': bias,
+                'mape': mape,
+                'accuracy': accuracy
+            })
 
-            cycle_metrics['bias'].append(bias)
-            cycle_metrics['accuracy'].append(accuracy)
-            cycle_metrics['mape'].append(mape)
-            cycle_metrics['coc'].append(coc)
-            prev_cycle_preds = preds
+            print(f"Lag {lag}: Bias={bias:.2f}%, Accuracy={accuracy:.2f}%, MAPE={mape:.2f}%")
+            
 
-            print(f"Cycle {i + 1} metrics: Bias={bias:.2f}, Accuracy={accuracy:.2f}, MAPE={mape:.2f}")  # Debugging statement
+        cycle_metrics.append({
+            'cycle': cycle + 1,
+            'metrics': metrics,
+            'mean_mape': np.mean([m['mape'] for m in metrics]),  # All values valid, no filtering needed
+            'mean_accuracy': np.mean([m['accuracy'] for m in metrics])  # All values valid, no filtering needed
+        })
 
     print("Backtesting complete.")  # Debugging statement
     return cycle_metrics
@@ -696,143 +691,143 @@ def backtest_model(country_data, y_train_arima, model, model_type, target_column
 
 # ------------------------------------- Apply Stress Testing -------------------------------------------------------
 
-def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_features, shock_magnitude, models, retrained_models, target_column, val_start, val_end, blind_test_start, blind_test_end):
-    combined_df_stressed = combined_df.copy()
+# def apply_stress_to_dataframe(combined_df, shock_years, shock_quarter, shock_features, shock_magnitude, models, retrained_models, target_column, val_start, val_end, blind_test_start, blind_test_end):
+#     combined_df_stressed = combined_df.copy()
 
-    shock_years = [2017, 2019, 2020, 2023]
-    shock_quarter = 4
-    shock_features = [
-        'NET Premiums Written', 'NET Premiums Earned', 'NET Claims Incurred',
-        'Changes in other technical provisions', 'Expenses incurred', 
-        'Total technical expenses', 'Other Expenses'
-    ] + [col for col in combined_df.columns if '_Lag' in col]
+#     shock_years = [2017, 2019, 2020, 2023]
+#     shock_quarter = 4
+#     shock_features = [
+#         'NET Premiums Written', 'NET Premiums Earned', 'NET Claims Incurred',
+#         'Changes in other technical provisions', 'Expenses incurred', 
+#         'Total technical expenses', 'Other Expenses'
+#     ] + [col for col in combined_df.columns if '_Lag' in col]
 
-    shock_magnitude = {
-        'NET Premiums Written': 0.1,
-        'NET Premiums Earned': 0.1,
-        'NET Claims Incurred': 0.20,
-        'Changes in other technical provisions': 0.15,
-        'Expenses incurred': 0.1,
-        'Total technical expenses': 0.15,
-        'Other Expenses': 0.2
-    }
+#     shock_magnitude = {
+#         'NET Premiums Written': 0.1,
+#         'NET Premiums Earned': 0.1,
+#         'NET Claims Incurred': 0.20,
+#         'Changes in other technical provisions': 0.15,
+#         'Expenses incurred': 0.1,
+#         'Total technical expenses': 0.15,
+#         'Other Expenses': 0.2
+#     }
 
     
-    # Apply shocks to the stressed dataset
-    for year in shock_years:
-        for feature in shock_features:
-            if feature in shock_magnitude:  # Apply specified shock for known features
-                magnitude = 1 + shock_magnitude[feature]
-            else:  # Default shock for lagged or unknown features
-                magnitude = 1.1
+#     # Apply shocks to the stressed dataset
+#     for year in shock_years:
+#         for feature in shock_features:
+#             if feature in shock_magnitude:  # Apply specified shock for known features
+#                 magnitude = 1 + shock_magnitude[feature]
+#             else:  # Default shock for lagged or unknown features
+#                 magnitude = 1.1
 
-            # Apply the shock to the selected period and feature
-            combined_df_stressed.loc[
-                (combined_df_stressed['Year'] == year) & 
-                (combined_df_stressed['Quarter'] == shock_quarter), feature
-            ] *= magnitude
+#             # Apply the shock to the selected period and feature
+#             combined_df_stressed.loc[
+#                 (combined_df_stressed['Year'] == year) & 
+#                 (combined_df_stressed['Quarter'] == shock_quarter), feature
+#             ] *= magnitude
 
-    # Initialize storage for stressed metrics
-    stressed_metrics = {}
+#     # Initialize storage for stressed metrics
+#     stressed_metrics = {}
 
-    for country in combined_df['Country'].unique():
-        print(f"\nEvaluating stressed metrics for country: {country}")
-        stressed_val_data = combined_df_stressed[
-            (combined_df_stressed['Country'] == country) &
-            (combined_df_stressed['Date'] >= val_start) &
-            (combined_df_stressed['Date'] <= val_end)
-        ]
-        stressed_blind_test_data = combined_df_stressed[
-            (combined_df_stressed['Country'] == country) &
-            (combined_df_stressed['Date'] >= blind_test_start) &
-            (combined_df_stressed['Date'] <= blind_test_end)
-        ]
-        stressed_X_val = stressed_val_data.drop(columns=[target_column, 'Date', 'Country'])
-        stressed_y_val = stressed_val_data[target_column]
-        stressed_X_blind_test = stressed_blind_test_data.drop(columns=[target_column, 'Date', 'Country'])
-        stressed_y_blind_test = stressed_blind_test_data[target_column]
+#     for country in combined_df['Country'].unique():
+#         print(f"\nEvaluating stressed metrics for country: {country}")
+#         stressed_val_data = combined_df_stressed[
+#             (combined_df_stressed['Country'] == country) &
+#             (combined_df_stressed['Date'] >= val_start) &
+#             (combined_df_stressed['Date'] <= val_end)
+#         ]
+#         stressed_blind_test_data = combined_df_stressed[
+#             (combined_df_stressed['Country'] == country) &
+#             (combined_df_stressed['Date'] >= blind_test_start) &
+#             (combined_df_stressed['Date'] <= blind_test_end)
+#         ]
+#         stressed_X_val = stressed_val_data.drop(columns=[target_column, 'Date', 'Country'])
+#         stressed_y_val = stressed_val_data[target_column]
+#         stressed_X_blind_test = stressed_blind_test_data.drop(columns=[target_column, 'Date', 'Country'])
+#         stressed_y_blind_test = stressed_blind_test_data[target_column]
 
-        # Preprocess ARIMA-specific dataset
-        arima_df = prepare_for_arima_ma(combined_df_stressed[combined_df_stressed['Country'] == country], target_column)
-        y_train_arima = arima_df[target_column][:len(combined_df_stressed)]  # Slice to match combined data length
+#         # Preprocess ARIMA-specific dataset
+#         arima_df = prepare_for_arima_ma(combined_df_stressed[combined_df_stressed['Country'] == country], target_column)
+#         y_train_arima = arima_df[target_column][:len(combined_df_stressed)]  # Slice to match combined data length
 
-        country_results = {}
+#         country_results = {}
 
-        # Default ML models on stressed validation and blind test sets
-        for model_name, model in models.items():
-            model.fit(stressed_X_val, stressed_y_val)
-            stressed_val_preds = model.predict(stressed_X_val)
-            stressed_blind_test_preds = model.predict(stressed_X_blind_test)
+#         # Default ML models on stressed validation and blind test sets
+#         for model_name, model in models.items():
+#             model.fit(stressed_X_val, stressed_y_val)
+#             stressed_val_preds = model.predict(stressed_X_val)
+#             stressed_blind_test_preds = model.predict(stressed_X_blind_test)
 
 
-        country_results[model_name] = {
-                'validation': {
-                    'MAPE%': mean_absolute_percentage_error(stressed_y_val, stressed_val_preds) * 100,
-                    'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_val, stressed_val_preds) * 100,
-                    'Bias%': (np.mean(stressed_val_preds - stressed_y_val) / np.mean(stressed_y_val)) * 100
-                },
-                'blind_test': {
-                    'MAPE%': mean_absolute_percentage_error(stressed_y_blind_test, stressed_blind_test_preds) * 100,
-                    'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_blind_test, stressed_blind_test_preds) * 100,
-                    'Bias%': (np.mean(stressed_blind_test_preds - stressed_y_blind_test) / np.mean(stressed_y_blind_test)) * 100
-                }
-            }
+#         country_results[model_name] = {
+#                 'validation': {
+#                     'MAPE%': mean_absolute_percentage_error(stressed_y_val, stressed_val_preds) * 100,
+#                     'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_val, stressed_val_preds) * 100,
+#                     'Bias%': (np.mean(stressed_val_preds - stressed_y_val) / np.mean(stressed_y_val)) * 100
+#                 },
+#                 'blind_test': {
+#                     'MAPE%': mean_absolute_percentage_error(stressed_y_blind_test, stressed_blind_test_preds) * 100,
+#                     'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_blind_test, stressed_blind_test_preds) * 100,
+#                     'Bias%': (np.mean(stressed_blind_test_preds - stressed_y_blind_test) / np.mean(stressed_y_blind_test)) * 100
+#                 }
+#             }
 
-        # Retrained ML models on stressed blind test set only
-        for model_name, model in retrained_models.items():
-            model.fit(stressed_X_blind_test, stressed_y_blind_test)
-            stressed_re_blind_test_preds = model.predict(stressed_X_blind_test)
+#         # Retrained ML models on stressed blind test set only
+#         for model_name, model in retrained_models.items():
+#             model.fit(stressed_X_blind_test, stressed_y_blind_test)
+#             stressed_re_blind_test_preds = model.predict(stressed_X_blind_test)
 
-            country_results[model_name] = {
-                'blind_test': {
-                    'MAPE%': mean_absolute_percentage_error(stressed_y_blind_test, stressed_re_blind_test_preds) * 100,
-                    'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_blind_test, stressed_re_blind_test_preds) * 100,
-                    'Bias%': (np.mean(stressed_re_blind_test_preds - stressed_y_blind_test) / np.mean(stressed_y_blind_test)) * 100
-                }
-            }
+#             country_results[model_name] = {
+#                 'blind_test': {
+#                     'MAPE%': mean_absolute_percentage_error(stressed_y_blind_test, stressed_re_blind_test_preds) * 100,
+#                     'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_blind_test, stressed_re_blind_test_preds) * 100,
+#                     'Bias%': (np.mean(stressed_re_blind_test_preds - stressed_y_blind_test) / np.mean(stressed_y_blind_test)) * 100
+#                 }
+#             }
 
         
-        # Use ARIMA and MA models
-        try:
-            _, stressed_arima_forecast, _ = train_arima_model(
-                y_combined=y_train_arima,
-                blind_test_data=stressed_y_blind_test,
-                forecast_steps=len(stressed_y_blind_test)
-            )
+#         # Use ARIMA and MA models
+#         try:
+#             _, stressed_arima_forecast, _ = train_arima_model(
+#                 y_combined=y_train_arima,
+#                 blind_test_data=stressed_y_blind_test,
+#                 forecast_steps=len(stressed_y_blind_test)
+#             )
 
-            # Store metrics for ARIMA and MA models
-            country_results['ARIMA'] = {
-                'blind_test': {
-                    'MAPE%': mean_absolute_percentage_error(stressed_y_blind_test, stressed_arima_forecast) * 100,
-                    'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_blind_test, stressed_arima_forecast) * 100,
-                    'Bias%': (np.mean(stressed_arima_forecast - stressed_y_blind_test) / np.mean(stressed_y_blind_test)) * 100
-                }
-            }
-        except Exception as e:
-            print(f"ARIMA model failed for {country}: {e}")
+#             # Store metrics for ARIMA and MA models
+#             country_results['ARIMA'] = {
+#                 'blind_test': {
+#                     'MAPE%': mean_absolute_percentage_error(stressed_y_blind_test, stressed_arima_forecast) * 100,
+#                     'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_blind_test, stressed_arima_forecast) * 100,
+#                     'Bias%': (np.mean(stressed_arima_forecast - stressed_y_blind_test) / np.mean(stressed_y_blind_test)) * 100
+#                 }
+#             }
+#         except Exception as e:
+#             print(f"ARIMA model failed for {country}: {e}")
 
-        try:
-            _, stressed_ma_forecast, _ = train_ma_model(
-                y_combined=y_train_arima,
-                blind_test_data=stressed_y_blind_test,
-                window=4,
-                forecast_steps=len(stressed_y_blind_test)
-            )
+#         try:
+#             _, stressed_ma_forecast, _ = train_ma_model(
+#                 y_combined=y_train_arima,
+#                 blind_test_data=stressed_y_blind_test,
+#                 window=4,
+#                 forecast_steps=len(stressed_y_blind_test)
+#             )
 
-            country_results['Moving Average'] = {
-                'blind_test': {
-                    'MAPE%': mean_absolute_percentage_error(stressed_y_blind_test, stressed_ma_forecast) * 100,
-                    'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_blind_test, stressed_ma_forecast) * 100,
-                    'Bias%': (np.mean(stressed_ma_forecast - stressed_y_blind_test) / np.mean(stressed_y_blind_test)) * 100
-                }
-            }
-        except Exception as e:
-            print(f"Moving Average model failed for {country}: {e}")
+#             country_results['Moving Average'] = {
+#                 'blind_test': {
+#                     'MAPE%': mean_absolute_percentage_error(stressed_y_blind_test, stressed_ma_forecast) * 100,
+#                     'Accuracy%': 100 - mean_absolute_percentage_error(stressed_y_blind_test, stressed_ma_forecast) * 100,
+#                     'Bias%': (np.mean(stressed_ma_forecast - stressed_y_blind_test) / np.mean(stressed_y_blind_test)) * 100
+#                 }
+#             }
+#         except Exception as e:
+#             print(f"Moving Average model failed for {country}: {e}")
 
-        # Add the results for this country to the stressed_metrics dictionary
-        stressed_metrics[country] = country_results
+#         # Add the results for this country to the stressed_metrics dictionary
+#         stressed_metrics[country] = country_results
 
-    return stressed_metrics
+#     return stressed_metrics
 
 
 # -------------------------------- Business Solution ---------------------------------------------------------------------------------
@@ -1042,10 +1037,10 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
         'Moving Average': ma_models
     }
 
-    results['stressed_metrics'] = apply_stress_to_dataframe(
-        combined_df, shock_years, shock_quarter, shock_features, shock_magnitude, 
-        models, retrained_models, target_column, val_start, val_end, blind_test_start, blind_test_end
-    )
+    # results['stressed_metrics'] = apply_stress_to_dataframe(
+    #     combined_df, shock_years, shock_quarter, shock_features, shock_magnitude, 
+    #     models, retrained_models, target_column, val_start, val_end, blind_test_start, blind_test_end
+    # )
 
     # Select the best model for each country
     results = select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_mape=0.2)
@@ -1090,3 +1085,186 @@ def get_or_generate_results(combined_df, cycles=3):
 
 
 
+
+
+
+#original
+
+# # ---------------------------------- Back Testing ----------------------------------------------------------------
+
+# # # model_dicts is models
+# # # model_types is the dictionary defining each model's type
+
+# def run_backtest(model_dicts, model_types, combined_df, target_column, cycles):
+#     """
+#     Run backtesting for all models (ML, ARIMA, MA) on the combined dataset.
+
+#     Args:
+#         model_dicts (list): List of model dictionaries (e.g., ML models, retrained models).
+#         model_types (dict): Dictionary mapping model names to their types (e.g., 'xgb', 'arima', 'ma').
+#         combined_df (pd.DataFrame): Combined dataset with all countries.
+#         target_column (str): The target column for predictions.
+#         cycles (int): Number of backtesting cycles.
+
+#     Returns:
+#         dict: Backtesting results for each country and model.
+#     """
+#     # Combine all ML models and types into one dictionary
+#     all_models = {}
+#     for model_dict in model_dicts:
+#         all_models.update(model_dict)
+
+#     countries = combined_df['Country'].unique()
+#     backtesting_results = {}
+
+#     for country in countries:
+#         print(f"\nProcessing country in back testing: {country}")  # Debugging statement
+#         country_data = combined_df[combined_df['Country'] == country]
+
+#         # Preprocess data for ARIMA/MA
+#         arima_df = prepare_for_arima_ma(country_data, target_column)
+
+#         # Drop the first 5 rows of each country's data for ARIMA
+#         arima_df = arima_df.iloc[5:]
+#         print(f"arima_df after dropping the first 5 rows for ARIMA:\n{arima_df.head()}")
+
+#         y_train_arima = arima_df[target_column]
+
+#         model_results = {}
+#         for model_name, model in all_models.items():
+#             model_type = model_types[model_name]
+#             print(f"Back testing evaluating model: {model_name} (Type: {model_type})")  # Debugging statement
+#             backtest_metrics = backtest_model(country_data, y_train_arima, model, model_type, target_column, cycles=cycles, future_forecast_steps=3)
+#             model_results[model_name] = backtest_metrics
+
+#             # Save backtesting results for this model
+#             #model_results[model_name] = backtest_metrics
+
+#         print(f"Completed backtesting for {country}.")  # Debugging statement
+#         backtesting_results[country] = model_results
+
+#     print("Backtesting complete.")  # Debugging statement
+#     return backtesting_results
+
+
+# def backtest_model(country_data, y_train_arima, model, model_type, target_column, window=26, test_size=5, cycles=3, future_forecast_steps=3):
+#     """
+#     Perform backtesting for a single model (ML, ARIMA, MA) on a country's data.
+
+#     Args:
+#         country_data (pd.DataFrame): Full dataset for the specific country.
+#         arima_df (pd.DataFrame): Preprocessed dataset for ARIMA/MA models.
+#         model (object): The model to be backtested (e.g., ML, ARIMA, MA).
+#         model_type (str): The type of the model ('xgb', 'arima', 'ma').
+#         target_column (str): The target column for predictions.
+#         window (int): Training window size.
+#         test_size (int): Testing window size.
+#         cycles (int): Number of backtesting cycles.
+
+#     Returns:
+#         dict: Metrics for each backtesting cycle.
+#     """
+#     print(f"Starting backtest for model type: {model_type}")  # Debugging statement
+#     cycle_metrics = {'bias': [], 'accuracy': [], 'mape': [], 'coc': []}
+#     prev_cycle_preds = None
+
+#     # Determine model type
+#     is_ml_model = model_type in ['xgb', 'lgb']
+#     is_arima_model = model_type == 'arima'
+#     is_ma_model = model_type == 'ma'
+
+#     # Define blind test data. This line ensures that the blind test data (y_blind_test_country) is extracted consistently across all model types (ML, ARIMA, MA) without being affected by the ARIMA-specific preprocessing
+#     y_blind_test_country = country_data[target_column].iloc[-test_size:]
+
+#     # ARIMA and MA models if applicable
+#     if is_arima_model:
+#         print("Back testing training ARIMA model...")  # Debugging statement
+#         arima_model, arima_blind_test_forecast, _ = train_arima_model(
+#             y_combined=y_train_arima,  # Combined training data for ARIMA
+#             blind_test_data=y_blind_test_country,  # Blind test set for the specific country
+#             blind_test_steps=len(y_blind_test_country),  # Number of steps for the blind test forecast
+#             future_forecast_steps=future_forecast_steps  # Number of future steps to forecast
+#         )
+#     elif is_ma_model:
+#         print("Back testing training MA model...")  # Debugging statement
+#         ma_model, ma_blind_test_forecast, _ = train_ma_model(
+#             y_combined=y_train_arima,
+#             blind_test_data=country_data[target_column].iloc[window:],
+#             window=4,
+#             forecast_steps=test_size
+#         )
+#     if is_arima_model or is_ma_model:
+#         window = 20
+#     for i in range(cycles):
+#         print(f"Cycle {i + 1}/{cycles}...")  # Debugging statement
+#         b_train = country_data.iloc[0:window - i]
+#         b_test = country_data.iloc[window - i:]
+#         test_size = len(b_test)
+
+#         b_X_train = b_train.drop([target_column, 'Date', 'Country'], axis=1, errors='ignore')
+#         b_y_train = b_train[target_column]
+#         b_X_test = b_test.drop([target_column, 'Date', 'Country'], axis=1, errors='ignore')
+#         b_y_test = b_test[target_column]
+
+#         if is_ml_model:
+#             print(f"Back testing training ML model...")  # Debugging statement
+#             model.fit(b_X_train, b_y_train)
+#             preds = model.predict(b_X_test)
+            
+#         elif is_arima_model:
+#             try:
+#                 print("Back testing: Forecasting with ARIMA model...")  # Debugging statement
+#                 preds = arima_blind_test_forecast[-test_size:]  # Use ARIMA model for forecasting
+#             except Exception as e:
+#                 print(f"ARIMA model forecasting failed: {e}")
+#                 preds = np.full(len(b_y_test), np.nan)
+
+
+#         elif is_ma_model:
+#             try:
+#                 print("Back testing: Forecasting with MA model...")  # Debugging statement
+#                 preds = ma_blind_test_forecast[-test_size:]   # Use MA model for forecasting
+#             except Exception as e:
+#                 print(f"MA model forecasting failed: {e}")
+#                 preds = np.full(len(b_y_test), np.nan)
+
+        
+#         # Ensure predictions align with test data
+#         if len(preds) != len(b_y_test):
+#             print(f"Prediction length mismatch: preds={len(preds)}, b_y_test={len(b_y_test)}")  # Debugging statement
+#             if len(preds) == 0:
+#                 # Handle empty predictions by filling with mean of training set
+#                 print("Warning: Predictions are empty. Filling with mean of training data.")
+#                 preds = np.full(len(b_y_test), b_y_train.mean())
+
+#             elif len(preds) > len(b_y_test):
+#                 # Truncate predictions to match test set length
+#                 print("Warning: Predictions are longer than test set. Truncating to match length.")
+#                 preds = preds[:len(b_y_test)]
+
+#             elif len(preds) < len(b_y_test):
+#                 # Extend predictions with the last value to match test set length
+#                 print("Warning: Predictions are shorter than test set. Padding with last prediction value.")
+#                 padding = [preds[-1]] * (len(b_y_test) - len(preds))
+#                 preds = np.append(preds, padding)
+
+
+#         # Calculate metrics if predictions are valid
+#         if len(preds) == len(b_y_test) and not np.isnan(preds).all():
+#             bias = (np.mean(preds - b_y_test) / np.mean(b_y_test)) * 100
+#             accuracy = 100 - mean_absolute_percentage_error(b_y_test, preds) * 100
+#             mape = mean_absolute_percentage_error(b_y_test, preds) * 100
+
+#             coc = ((np.mean(preds - prev_cycle_preds) / np.mean(prev_cycle_preds)) * 100
+#                    if prev_cycle_preds is not None and len(preds) == len(prev_cycle_preds) else np.nan)
+
+#             cycle_metrics['bias'].append(bias)
+#             cycle_metrics['accuracy'].append(accuracy)
+#             cycle_metrics['mape'].append(mape)
+#             cycle_metrics['coc'].append(coc)
+#             prev_cycle_preds = preds
+
+#             print(f"Cycle {i + 1} metrics: Bias={bias:.2f}, Accuracy={accuracy:.2f}, MAPE={mape:.2f}")  # Debugging statement
+
+#     print("Backtesting complete.")  # Debugging statement
+#     return cycle_metrics
