@@ -101,30 +101,30 @@ def prepare_for_arima_ma(combined_df, target_column):
 
     # Extract necessary columns
     arima_df = combined_df[['Date', target_column]].copy()
-    print(f"Initial arima_df shape: {arima_df.shape}")
-    print(f"Initial arima_df head:\n{arima_df.head()}")
+    #print(f"Initial arima_df shape: {arima_df.shape}")
+    #print(f"Initial arima_df head:\n{arima_df.head()}")
 
     # Drop rows with NaN in the target column
     arima_df = arima_df.dropna(subset=[target_column])
-    print(f"Shape after dropping NaNs in target column: {arima_df.shape}")
-    print(f"Sample of arima_df after dropping NaNs:\n{arima_df.head()}")    
+    #print(f"Shape after dropping NaNs in target column: {arima_df.shape}")
+    #print(f"Sample of arima_df after dropping NaNs:\n{arima_df.head()}")    
 
     # Set Date as index (very important for ARIMA)
     #arima_df.index = pd.PeriodIndex(arima_df.index, freq="Q") # or arima_df['Date'] = pd.to_datetime(arima_df['Date'])
     arima_df['Date'] = pd.to_datetime(arima_df['Date'])
     arima_df.set_index('Date', inplace=True)
-    print(f"arima_df after setting 'Date' as index:\n{arima_df.head()}")
-    print(f"arima_df index type: {type(arima_df.index)}")
+    #print(f"arima_df after setting 'Date' as index:\n{arima_df.head()}")
+    #print(f"arima_df index type: {type(arima_df.index)}")
 
     # Infer and validate frequency
     inferred_freq = pd.infer_freq(arima_df.index)
-    print(f"Inferred frequency: {inferred_freq}")
+    #print(f"Inferred frequency: {inferred_freq}")
     if inferred_freq is None:
         raise ValueError("Could not infer a valid frequency for the time series data.")
 
     # After inferring the frequency. explicitly assign the inferred frequency to the index
     arima_df.index.freq = inferred_freq
-    print(f"arima_df index frequency after assignment: {arima_df.index.freq}")
+    #print(f"arima_df index frequency after assignment: {arima_df.index.freq}")
 
     # Check for missing periods
     missing_periods = pd.date_range(start=arima_df.index.min(), end=arima_df.index.max(), freq=inferred_freq).difference(arima_df.index)
@@ -134,10 +134,10 @@ def prepare_for_arima_ma(combined_df, target_column):
         print("No missing periods in the time series.")
 
     # Final check
-    print(f"Final arima_df shape: {arima_df.shape}")
-    print(f"Final arima_df head:\n{arima_df.head()}")
-    print(f"arima_df index frequency: {arima_df.index.freq}")
-    print(f"---- ARIMA dataset size: {arima_df.shape[0]}")  #ARIMA dataset size: 31
+    #print(f"Final arima_df shape: {arima_df.shape}")
+    #print(f"Final arima_df head:\n{arima_df.head()}")
+    #print(f"arima_df index frequency: {arima_df.index.freq}")
+    #print(f"---- ARIMA dataset size: {arima_df.shape[0]}")  #ARIMA dataset size: 31
 
     return arima_df
 
