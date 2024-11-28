@@ -36,13 +36,12 @@ def split_data(combined_df, train_start, train_end, val_start, val_end, blind_te
     val_data = combined_df[(combined_df['Date'] >= val_start) & (combined_df['Date'] <= val_end)]
     blind_test_data = combined_df[(combined_df['Date'] >= blind_test_start) & (combined_df['Date'] <= blind_test_end)]
 
-    # Debugging
-    print(f"\nData Spliting Function")
-    print(f"\nRows in Blind Test Data: {blind_test_data}")
-    print(f"\nTrain data size: {train_data.shape[0]}")  #Train data size: 22
-    print(f"\nValidation data size: {val_data.shape[0]}")  #Validation data size: 5
-    print(f"\nBlind test data size: {blind_test_data.shape[0]}")  #Blind test data size: 4
-    print(f"\nEnd of Data Spliting Function")
+    #print(f"\nData Spliting Function")
+    #print(f"\nRows in Blind Test Data: {blind_test_data}")
+    #print(f"\nTrain data size: {train_data.shape[0]}")  #Train data size: 22
+    #print(f"\nValidation data size: {val_data.shape[0]}")  #Validation data size: 5
+    #print(f"\nBlind test data size: {blind_test_data.shape[0]}")  #Blind test data size: 4
+    #print(f"\nEnd of Data Spliting Function")
 
     X_train = train_data.drop(columns=[target_column, 'Date', 'Country'])
     y_train = train_data[target_column]
@@ -580,8 +579,8 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles, n
         arima_df = prepare_for_arima_ma(country_data, target_column)
 
         # Drop the first 5 rows of each country's data for ARIMA
-        #arima_df = arima_df.iloc[4:]
-        #print(f"arima_df after dropping the first 4 rows for ARIMA:\n{arima_df.head()}")
+        arima_df = arima_df.iloc[4:]
+        print(f"arima_df after dropping the first 4 rows for ARIMA:\n{arima_df.head()}")
 
         y_train_arima = arima_df[target_column]
 
@@ -621,6 +620,9 @@ def backtest_model(country_data, y_train_arima, model, model_type, target_column
     print(f"Starting backtest for model type: {model_type}")  
     cycle_metrics = []
 
+    # Initialize global list to store predictions from all cycles
+    all_preds = []  
+
     # Determine model type
     is_ml_model = model_type in ['xgb', 'lgb']
     is_arima_model = model_type == 'arima'
@@ -646,7 +648,9 @@ def backtest_model(country_data, y_train_arima, model, model_type, target_column
         print(f"Evaluating model Type: {model_type}")
         print(f"is_ml_model: {is_ml_model}, is_ma_model: {is_ma_model}, is_arima_model: {is_arima_model}")
 
+        # Initialize predictions for the current cycle
         preds = []
+
         if is_ml_model:
             print(f"Back testing training ML model.")  
             try:
@@ -658,32 +662,36 @@ def backtest_model(country_data, y_train_arima, model, model_type, target_column
 
                 print(f"Evaluating model is_ml_model: {is_ml_model}, is_ma_model: {is_ma_model}, is_arima_model: {is_arima_model}")
 
+        if is_arima_model or is_ma_model:
+            window = 25
+
         elif is_ma_model:
             print(f"Back testing training MA model.")  
-            for lag in range(1, n_lags + 1):
-                try:
-                    #print(f"MA model type: {type(model)}")
+            try:
+                #print(f"MA model type: {type(model)}")
 
-                    forecast = train_data[target_column].rolling(window=2).mean().iloc[-lag]
-                    preds.append(forecast)
-                except Exception as e:
-                    print(f"Moving Average prediction failed: {e}")
-                    preds.append(np.nan)
+                rolling_mean = train_data[target_column].rolling(window=25).mean()
+                preds = rolling_mean.iloc[-len(test_data):].tolist()
+            except Exception as e:
+                print(f"Moving Average prediction failed: {e}")
+                preds.append(np.nan)
 
         elif is_arima_model:
             print(f"Back testing training ARIMA model.")  
-            for lag in range(1, n_lags + 1):
-                try:
-                    print(f"ARIMA model type: {type(model)}")
+            try:
+                print(f"ARIMA model type: {type(model)}")
+                model.fit(train_data[target_column])
+                forecast = model.forecast(steps=len(test_data))
+                preds = forecast.tolist()
+            except Exception as e:
+                print(f"ARIMA prediction failed: {e}")
+                preds.append(np.nan)
 
-                    forecast = model.forecast(steps=lag)
-                    preds.append(forecast[-1])
-                except Exception as e:
-                    print(f"ARIMA prediction failed: {e}")
-                    preds.append(np.nan)
-
-        
-        
+        # Append predictions for this cycle to the global list
+        print(f"Before appending, preds for cycle {cycle + 1}: {preds}")
+        all_preds.extend(preds)  # Use `.extend()` to add multiple predictions to the global list
+        print(f"Updated all_preds after Cycle {cycle + 1}: {all_preds}")
+       
         # Ensure predictions align with test data
         if len(preds) != len(b_y_test):
             print(f"Prediction length mismatch: preds={len(preds)}, b_y_test={len(b_y_test)}")  # Debugging statement
@@ -730,11 +738,64 @@ def backtest_model(country_data, y_train_arima, model, model_type, target_column
             'mean_accuracy': np.mean([m['accuracy'] for m in metrics])  # All values valid, no filtering needed
         })
 
-    print("Backtesting complete.")  # Debugging statement
+    print("Backtesting complete.")
+    print(f"Final accumulated predictions across all cycles: {all_preds}")
+
     return cycle_metrics
 
 
+# try:
+        #     if is_ml_model:
+        #         print(f"Back testing training ML model.")  
+        #         model.fit(b_X_train, b_y_train)
+        #         preds = model.predict(b_X_test).tolist()
 
+        #     if is_arima_model or is_ma_model:
+        #         window = 25
+
+        #     elif is_ma_model:
+        #         print(f"Back testing training MA model.")  
+        #         rolling_mean = train_data[target_column].rolling(window=25).mean()
+        #         preds = rolling_mean.iloc[-len(test_data):].tolist()
+
+        #     elif is_arima_model:
+        #         print(f"Back testing training ARIMA model.")  
+        #         model.fit(train_data[target_column])
+        #         forecast = model.forecast(steps=len(test_data))
+        #         preds = forecast.tolist()
+
+        #     else:
+        #         print("Model type not recognized. Skipping cycle.")
+        #         preds = [np.nan] * len(test_data)
+
+        # except Exception as e:
+        #     print(f"Model training or prediction failed: {e}")
+        #     preds = [np.nan] * len(test_data)
+
+
+# elif is_ma_model:
+        #     print(f"Back testing training MA model.")  
+        #     for lag in range(1, n_lags + 1):
+        #         try:
+        #             #print(f"MA model type: {type(model)}")
+
+        #             forecast = train_data[target_column].rolling(window=2).mean().iloc[-lag]
+        #             preds.append(forecast)
+        #         except Exception as e:
+        #             print(f"Moving Average prediction failed: {e}")
+        #             preds.append(np.nan)
+
+        # elif is_arima_model:
+        #     print(f"Back testing training ARIMA model.")  
+        #     for lag in range(1, n_lags + 1):
+        #         try:
+        #             print(f"ARIMA model type: {type(model)}")
+
+        #             forecast = model.forecast(steps=lag)
+        #             preds.append(forecast[-1])
+        #         except Exception as e:
+        #             print(f"ARIMA prediction failed: {e}")
+        #             preds.append(np.nan)
 
 
 # -------------------------------- Business Solution ---------------------------------------------------------------------------------
@@ -824,6 +885,9 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     # Metrics for both single default ML models that is obtained on all countries on validation and blind test set
     results['default_xgb_metrics'] = xgb_results['metrics']
     results['default_lgb_metrics'] = lgb_results['metrics']
+    print(results['default_xgb_metrics'])
+    print(results['default_lgb_metrics'])
+
 
     # Save all-country, validation, and blind test predictions for default models
     results['ml_predictions'] = {
@@ -978,6 +1042,8 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     # Select the best model for each country
     results = select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_mape=0.2)
     print("Best Models in results:", results.get("best_models"))
+    #print(results)  # Check if `results` is None or has the expected structure
+    print(results.keys())  # Check if 'country_metrics' is part of the keys
 
     return results
 

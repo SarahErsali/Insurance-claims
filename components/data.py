@@ -75,7 +75,6 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
         combined_df['Quarter'] = np.nan
 
     combined_df = combined_df.groupby('Country').apply(lambda group: group.ffill().bfill()).reset_index(drop=True)
-    # Debugging after processing
     #print(f"Processed combined_df size: {combined_df.shape}")  #Processed combined_df size: (31, 67)
 
     # Debug check for any remaining NaNs after processing
