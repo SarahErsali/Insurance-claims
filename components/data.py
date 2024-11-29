@@ -96,7 +96,7 @@ def prepare_for_arima_ma(combined_df, target_column):
     if 'Date' not in combined_df.columns or target_column not in combined_df.columns:
         raise ValueError("The combined_df must contain 'Date' and target_column for ARIMA/MA modeling.")
     
-    print("\n----- Pre-processing ARIMA/MA dataset")
+    #print("\n----- Pre-processing ARIMA/MA dataset")
 
     # Extract necessary columns
     arima_df = combined_df[['Date', target_column]].copy()
