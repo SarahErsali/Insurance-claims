@@ -595,6 +595,7 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles, n
 
         print(f"Completed backtesting for {country}.")  
         backtesting_results[country] = {'predictions': all_preds, 'metrics': all_cycle_metrics}
+        print(f'metrics inside {all_cycle_metrics}')
 
     print("Backtesting complete.")
     return backtesting_results
@@ -741,7 +742,8 @@ def backtest_model(country_data, y_train_arima, model, model_name, model_type, t
             #'cycle': cycle + 1,
             'metrics': metrics,
             'mean_mape': np.mean([m['mape'] for m in metrics]),  # All values valid, no filtering needed
-            'mean_accuracy': np.mean([m['accuracy'] for m in metrics])  # All values valid, no filtering needed
+            'mean_accuracy': np.mean([m['accuracy'] for m in metrics]),  # All values valid, no filtering needed
+            'mean_bias': np.mean([m['bias'] for m in metrics if 'bias' in m])
         }
 
         
@@ -808,40 +810,63 @@ def backtest_model(country_data, y_train_arima, model, model_name, model_type, t
 
 # -------------------------------- Business Solution ---------------------------------------------------------------------------------
 
-
-def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_mape=0.2):
+def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_consistency=0.2):
     """
-    Select the best model for each country based on weighted criteria from backtesting results.
+    Select the best model for each country based on weighted criteria, including consistency.
 
     Args:
         results (dict): The results dictionary containing backtesting metrics.
         weight_bias (float): Weight for bias in the final score.
         weight_accuracy (float): Weight for accuracy in the final score.
-        weight_mape (float): Weight for MAPE in the final score.
+        weight_consistency (float): Weight for consistency (low standard deviation) in the final score.
 
     Returns:
         dict: Updated results dictionary with the best models for each country.
     """
-    backtesting_results = results.get("backtesting_results", {})
+    backtesting_results = results["backtesting_results"]
     best_models = {}
 
-    for country, models in backtesting_results.items():
+    for country, country_data in backtesting_results.items():
         print(f"\nSelecting the best model for {country}...")
         model_scores = {}
 
-        for model_name, metrics in models.items():
+        # Access the 'metrics' dictionary for the country
+        models = country_data["metrics"]
+
+        for model_name, model_metrics in models.items():
+            
             try:
-                # Extract the mean values over cycles
-                avg_bias = np.nanmean(metrics.get("bias", []))
-                avg_accuracy = np.nanmean(metrics.get("accuracy", []))
-                avg_mape = np.nanmean(metrics.get("mape", []))
+                # Extract the mean and standard deviation over cycles
+                #avg_bias = np.nanmean(metrics.get("bias", []))
+                #print(model_metrics)
+                bias_values = [
+                    d['bias'] 
+                    for cycle_data in model_metrics.values()  # Iterate over cycle-level data
+                    for d in cycle_data['metrics']           # Iterate over the list of dictionaries in 'metrics'
+                    if 'bias' in d                           # Ensure 'bias' exists in the dictionary
+                    ]
+
+                avg_bias = np.nanmean(bias_values)
+                std_bias = np.nanstd(bias_values)
+                accuracy_values = [
+                    d['bias'] 
+                    for cycle_data in model_metrics.values()  # Iterate over cycle-level data
+                    for d in cycle_data['metrics']           # Iterate over the list of dictionaries in 'metrics'
+                    if 'bias' in d                           # Ensure 'bias' exists in the dictionary
+                    ]
+
+                avg_accuracy = np.nanmean(accuracy_values)
+                std_accuracy = np.nanstd(accuracy_values)
+
+                # Calculate consistency as the sum of standard deviations
+                consistency = std_bias + std_accuracy
 
                 # Calculate the weighted score
                 # Lower bias and MAPE are better, higher accuracy is better
                 score = (
-                    (1 / abs(avg_bias)) * weight_bias + 
+                    (1 / abs(avg_bias)) * weight_bias + #1/|bias| to penalize large biases
                     avg_accuracy * weight_accuracy - 
-                    avg_mape * weight_mape
+                    consistency * weight_consistency  #Lower consistency penalty
                 )
 
                 model_scores[model_name] = score
@@ -861,6 +886,60 @@ def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_mape
     # Save the best models to the results dictionary
     results["best_models"] = best_models
     return results
+
+
+# def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_mape=0.2):
+#     """
+#     Select the best model for each country based on weighted criteria from backtesting results.
+
+#     Args:
+#         results (dict): The results dictionary containing backtesting metrics.
+#         weight_bias (float): Weight for bias in the final score.
+#         weight_accuracy (float): Weight for accuracy in the final score.
+#         weight_mape (float): Weight for MAPE in the final score.
+
+#     Returns:
+#         dict: Updated results dictionary with the best models for each country.
+#     """
+#     backtesting_results = results.get("backtesting_results", {})
+#     best_models = {}
+
+#     for country, models in backtesting_results.items():
+#         print(f"\nSelecting the best model for {country}...")
+#         model_scores = {}
+
+#         for model_name, metrics in models.items():
+#             try:
+#                 # Extract the mean values over cycles
+#                 avg_bias = np.nanmean(metrics.get("bias", []))
+#                 avg_accuracy = np.nanmean(metrics.get("accuracy", []))
+#                 avg_mape = np.nanmean(metrics.get("mape", []))
+
+#                 # Calculate the weighted score
+#                 # Lower bias and MAPE are better, higher accuracy is better
+#                 score = (
+#                     (1 / abs(avg_bias)) * weight_bias + #1/|bias| to penalize large biases
+#                     avg_accuracy * weight_accuracy - 
+#                     avg_mape * weight_mape
+#                 )
+
+#                 model_scores[model_name] = score
+#                 print(f"Model: {model_name}, Score: {score:.2f}")
+#             except Exception as e:
+#                 print(f"Error calculating score for model {model_name} in {country}: {e}")
+#                 model_scores[model_name] = float("-inf")  # Penalize invalid models
+
+#         # Select the model with the highest score
+#         best_model = max(model_scores, key=model_scores.get)
+#         best_models[country] = {
+#             "model": best_model,
+#             "score": model_scores[best_model]
+#         }
+#         print(f"Best model for {country}: {best_model} with score {model_scores[best_model]:.2f}")
+
+#     # Save the best models to the results dictionary
+#     results["best_models"] = best_models
+#     return results
 
 
 
@@ -1028,7 +1107,7 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
         print(f"  {model_name}: {model_type}")
 
     #print(f"CALLING BACKTESTING WITH CYCLES={cycles}, LAGS={n_lags}.")
-    results['backtesting_results'] = run_backtest(model_dict, model_types, combined_df=combined_df, target_column=target_column, cycles=cycles, n_lags = n_lags)
+    results['backtesting_results'] = run_backtest(model_dict, model_types, combined_df=combined_df, target_column=target_column, cycles=cycles, n_lags=n_lags)
     
     # Add a print statement to confirm and summarize backtesting results
     #print("\nBacktesting completed successfully.")
@@ -1048,7 +1127,7 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     # )
 
     # Select the best model for each country
-    results = select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_mape=0.2)
+    results = select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_consistency=0.2)
     print("Best Model Selection:", results.get("best_models"))
     #print(results)  # Check if `results` is None or has the expected structure
     print(results.keys())  # Check if 'country_metrics' is part of the keys
