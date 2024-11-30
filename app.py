@@ -332,50 +332,116 @@ def download_table(n_clicks):
 
 # -------------- Callback for Back Testing -------------------------
 
-
 @app.callback(
-    Output("backtesting-chart-container", "children"),
+    [Output("cycle-chart-container", "children"),
+     Output("lag-chart-container", "children")],
     [Input("country-dropdown", "value"),
      Input("model-dropdown", "value")]
 )
-def update_backtesting_chart(selected_country, selected_model):
+def update_backtesting_charts(selected_country, selected_model):
     if results is None or selected_country is None or selected_model is None:
-        return html.Div("No data available. Please select valid options.", style={"color": "red"})
+        no_data_msg = html.Div("No data available. Please select valid options.", style={"color": "red"})
+        return no_data_msg, no_data_msg
 
+    # Retrieve backtesting results
     backtesting_results = results.get("backtesting_results", {})
     country_data = backtesting_results.get(selected_country, {})
-    model_data = country_data.get(selected_model, {})
+    model_data = country_data.get("metrics", {}).get(selected_model, {})
 
-    # Ensure valid data is available
     if not model_data:
-        return html.Div(f"No data available for {selected_country} and {selected_model}.", style={"color": "red"})
+        no_data_msg = html.Div(f"No data available for {selected_country} and {selected_model}.", style={"color": "red"})
+        return no_data_msg, no_data_msg
 
-    # Create the figure
-    fig = go.Figure()
-    for metric in ["bias", "accuracy", "mape"]:
-        fig.add_trace(go.Bar(
-            x=[f"Cycle {i + 1}" for i in range(len(model_data[metric]))],
-            y=model_data[metric],
-            name=metric.capitalize(),
-            # text=model_data[metric],
-            # textposition='auto'
+    # Chart 1: Metrics across cycles
+    fig_cycles = go.Figure()
+    for metric in ["mean_bias", "mean_accuracy", "mean_mape"]:
+        fig_cycles.add_trace(go.Bar(
+            x=[cycle for cycle in model_data.keys()],  # Cycle names (e.g., "cycle 1", "cycle 2")
+            y=[model_data[cycle][metric] for cycle in model_data.keys()],  # Metric values for each cycle
+            name=metric.replace("_", " ").capitalize()
         ))
 
-    # Update layout for the figure
-    fig.update_layout(
-        title=f"Backtesting Metrics for {selected_model} in {selected_country}",
+    fig_cycles.update_layout(
+        title=f"Metrics Across Cycles for {selected_model} in {selected_country}",
         barmode='group',
-        #xaxis_title="Cycles",
         yaxis_title="Value (%)",
         legend_title="Metrics",
         height=500,
         width=800,
-        xaxis=dict(showgrid=False),  # Remove x-axis gridlines
-        yaxis=dict(showgrid=False),  # Remove y-axis gridlines
-        plot_bgcolor="white",       # Set plot background to white
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=False),
+        plot_bgcolor="white"
     )
 
-    return dcc.Graph(figure=fig)
+    # Chart 2: Bias and Accuracy across lags
+    fig_lags = go.Figure()
+    # Aggregate metrics for lags
+    lags = range(1, len(model_data["cycle 1"]["metrics"]) + 1)  # Assumes all cycles have the same number of lags
+    for metric in ["bias", "accuracy"]:
+        fig_lags.add_trace(go.Bar(
+            x=[f"Lag {lag}" for lag in lags],
+            y=[np.mean([model_data[cycle]["metrics"][lag - 1][metric] for cycle in model_data.keys()]) for lag in lags],
+            name=metric.capitalize()
+        ))
+
+    fig_lags.update_layout(
+        title=f"Bias and Accuracy Across Lags for {selected_model} in {selected_country}",
+        barmode='group',
+        yaxis_title="Value (%)",
+        legend_title="Metrics",
+        height=500,
+        width=800,
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=False),
+        plot_bgcolor="white"
+    )
+
+    # Return both figures
+    return dcc.Graph(figure=fig_cycles), dcc.Graph(figure=fig_lags)
+
+# @app.callback(
+#     Output("backtesting-chart-container", "children"),
+#     [Input("country-dropdown", "value"),
+#      Input("model-dropdown", "value")]
+# )
+# def update_backtesting_chart(selected_country, selected_model):
+#     if results is None or selected_country is None or selected_model is None:
+#         return html.Div("No data available. Please select valid options.", style={"color": "red"})
+
+#     backtesting_results = results.get("backtesting_results", {})
+#     country_data = backtesting_results.get(selected_country, {})
+#     model_data = country_data.get(selected_model, {})
+
+#     # Ensure valid data is available
+#     if not model_data:
+#         return html.Div(f"No data available for {selected_country} and {selected_model}.", style={"color": "red"})
+
+#     # Create the figure
+#     fig = go.Figure()
+#     for metric in ["bias", "accuracy", "mape"]:
+#         fig.add_trace(go.Bar(
+#             x=[f"Cycle {i + 1}" for i in range(len(model_data[metric]))],
+#             y=model_data[metric],
+#             name=metric.capitalize(),
+#             # text=model_data[metric],
+#             # textposition='auto'
+#         ))
+
+#     # Update layout for the figure
+#     fig.update_layout(
+#         title=f"Backtesting Metrics for {selected_model} in {selected_country}",
+#         barmode='group',
+#         #xaxis_title="Cycles",
+#         yaxis_title="Value (%)",
+#         legend_title="Metrics",
+#         height=500,
+#         width=800,
+#         xaxis=dict(showgrid=False),  # Remove x-axis gridlines
+#         yaxis=dict(showgrid=False),  # Remove y-axis gridlines
+#         plot_bgcolor="white",       # Set plot background to white
+#     )
+
+#     return dcc.Graph(figure=fig)
 
 
 

@@ -88,7 +88,7 @@ def train_and_evaluate_model(model, X_train, y_train, X_val, y_val, X_blind_test
         X_all = combined_df.drop(columns=[target_column, 'Date', 'Country'], errors='ignore')
         all_countries_preds = model.predict(X_all)
 
-    return {
+    return model, {
         'metrics': metrics,
         'validation_predictions': val_preds,
         'validation_actuals': y_val,  
@@ -167,7 +167,14 @@ def retrain_and_evaluate(model_class, best_params, X_combined, y_combined, X_bli
         X_all = combined_df.drop(columns=[target_column, 'Date', 'Country'], errors='ignore')
         all_countries_preds = model.predict(X_all)
 
-    return model, metrics, test_preds, all_countries_preds
+    return model, {
+        'metrics': metrics,  
+        'test_preds': test_preds,
+        'test_actuals': y_blind_test,  
+        'all_countries_predictions': all_countries_preds  # Predictions for the entire combined dataset
+    } 
+
+    #model, metrics, test_preds, all_countries_preds
 
 
 
@@ -191,7 +198,7 @@ def train_arima_model(y_combined, blind_test_data, blind_test_steps=None, future
         tuple: (ARIMA model, blind test forecast array, future forecast array)
     """
 
-    print(f"Start of Training ARIMA Model")
+    #print(f"Start of Training ARIMA Model")
     #print(f"After dropping 5 rows, y_combined length: {len(y_combined)}, blind_test_data length: {len(blind_test_data)}, blind_test_steps: {blind_test_steps}, future_forecast_steps: {future_forecast_steps}")  #y_combined length: 26 (31 total rows - 5 dropped rows), blind_test_data length: 4, forecast_steps: 4
     #print(f"First few values of y_combined:\n{y_combined.head()}")   #correct values
     #print(f"Rows in Blind Test Data: {blind_test_data}")
@@ -339,10 +346,10 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
     results = {}
     arima_models = {}
     ma_models = {}
-    print(f"@###@Initial ARIMA models dictionary: {arima_models}")
+    #print(f"@###@Initial ARIMA models dictionary: {arima_models}")
 
     for country in countries:
-        print(f"\n----- Evaluating models for country: {country}")
+        #print(f"\n----- Evaluating models for country: {country}")
         country_data = combined_df[combined_df['Country'] == country]
 
         # Splitting data for the specific country
@@ -378,7 +385,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
 
         # Evaluate Default ML Models
         for model_name, model in models.items():
-            print(f"*** Processing default model: {model_name}")
+            #print(f"*** Processing default model: {model_name}")
             try:
                 #print(f"Predicting for validation set with default {model_name}...")
 
@@ -412,8 +419,8 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
                     'blind_test_predictions': blind_test_preds,
                     'blind_test_actuals': y_blind_test_country 
                 }
-                print(f"Updated country_results after processing {model_name}:")
-                print(country_results)
+                #print(f"Updated country_results after processing {model_name}:")
+                #print(country_results)
 
             except Exception as e:
                 print(f"Error evaluating default {model_name} for {country}: {e}")
@@ -444,7 +451,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
                     'blind_test_actuals': y_blind_test_country
                 }
 
-                print(f"Updated country_results after processing retrained model {model_name}:")
+                #print(f"Updated country_results after processing retrained model {model_name}:")
                 print(country_results)
 
             except Exception as e:
@@ -476,7 +483,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
 
             # Add model to dictionary
             arima_models[country] = arima_model
-            print(f"@###@Updated ARIMA models dictionary: {arima_models}")
+            #print(f"@###@Updated ARIMA models dictionary: {arima_models}")
 
             arima_forecast_reset = arima_forecast.reset_index(drop=True)
             y_blind_test_reset = y_blind_test_country.reset_index(drop=True)
@@ -498,7 +505,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
             }
 
             # Debugging: Verify the contents of the ARIMA results
-            print(f"Country ARIMA results: {country_results['ARIMA']}")
+            #print(f"Country ARIMA results: {country_results['ARIMA']}")
 
         except Exception as e:
             print(f"ARIMA model evaluation failed for {country}: {e}")
@@ -526,14 +533,14 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
                 'blind_test_actuals': y_blind_test_country,
                 'future_forecast': future_ma_forecast
             }
-            print(f"Country MA results: {country_results['Moving Average']}")
+            #print(f"Country MA results: {country_results['Moving Average']}")
 
         except Exception as e:
             print(f"Moving Average model evaluation failed for {country}: {e}")
 
         results[country] = country_results
 
-    print(f"@###@Final ARIMA models dictionary: {arima_models}")
+    #print(f"@###@Final ARIMA models dictionary: {arima_models}")
     return results, arima_models, ma_models
 
 
@@ -569,7 +576,7 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles, n
     backtesting_results = {}
 
     for country in countries:
-        print(f"\nProcessing country in back testing: {country}")  
+        #print(f"\nProcessing country in back testing: {country}")  
         country_data = combined_df[combined_df['Country'] == country]
 
         # Preprocess data for ARIMA/MA
@@ -593,11 +600,11 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles, n
             #model_results[model_name] = all_cycle_metrics
 
 
-        print(f"Completed backtesting for {country}.")  
+        #print(f"Completed backtesting for {country}.")  
         backtesting_results[country] = {'predictions': all_preds, 'metrics': all_cycle_metrics}
-        print(f'metrics inside {all_cycle_metrics}')
+        #print(f'metrics inside {all_cycle_metrics}')
 
-    print("Backtesting complete.")
+    #print("Backtesting complete.")
     return backtesting_results
 
 
@@ -618,7 +625,7 @@ def backtest_model(country_data, y_train_arima, model, model_name, model_type, t
     Returns:
         dict: Metrics for each backtesting cycle.
     """
-    print(f"Starting backtest for model type: {model_type}")  
+    #print(f"Starting backtest for model type: {model_type}")  
     #cycle_metrics = []
 
     # # Initialize global list to store predictions from all cycles
@@ -631,14 +638,14 @@ def backtest_model(country_data, y_train_arima, model, model_name, model_type, t
 
     
     for cycle in range(cycles):
-        print(f"Cycle {cycle + 1}/{cycles}")  
+        #print(f"Cycle {cycle + 1}/{cycles}")  
         train_end = window - cycle
         #print(f"  Calculated train_end index: {train_end}")
         train_data = country_data.iloc[:train_end]
-        print(f"  Train data size: {train_data.shape[0]}")  
+        #print(f"  Train data size: {train_data.shape[0]}")  
         #print(f"  Train data head:\n{train_data.head()}")
         test_data = country_data.iloc[train_end:train_end + n_lags]
-        print(f"  Test data size: {test_data.shape[0]}")  
+        #print(f"  Test data size: {test_data.shape[0]}")  
         #print(f"  Test data head:\n{test_data.head()}")
 
         b_X_train = train_data.drop([target_column, 'Date', 'Country'], axis=1, errors='ignore')
@@ -653,7 +660,7 @@ def backtest_model(country_data, y_train_arima, model, model_name, model_type, t
         preds = []
 
         if is_ml_model:
-            print(f"Back testing training ML model.")  
+            #print(f"Back testing training ML model.")  
             try:
                 model.fit(b_X_train, b_y_train)
                 preds = model.predict(b_X_test).tolist()
@@ -667,7 +674,7 @@ def backtest_model(country_data, y_train_arima, model, model_name, model_type, t
             window = 25
 
         elif is_ma_model:
-            print(f"Back testing training MA model.")  
+            #print(f"Back testing training MA model.")  
             try:
                 #print(f"MA model type: {type(model)}")
 
@@ -678,7 +685,7 @@ def backtest_model(country_data, y_train_arima, model, model_name, model_type, t
                 preds.append(np.nan)
 
         elif is_arima_model:
-            print(f"Back testing training ARIMA model.")  
+            #print(f"Back testing training ARIMA model.")  
             try:
                 #print(f"ARIMA model type: {type(model)}")
                 model.fit(train_data[target_column])
@@ -695,29 +702,29 @@ def backtest_model(country_data, y_train_arima, model, model_name, model_type, t
             #print(f"Prediction length mismatch: preds={len(preds)}, b_y_test={len(b_y_test)}")  # Debugging statement
             if len(preds) == 0:
                 # Handle empty predictions by filling with mean of training set
-                print("Warning: Predictions are empty. Filling with mean of training data.")
+                #print("Warning: Predictions are empty. Filling with mean of training data.")
                 train_mean = b_y_train.mean()
                 preds = list(np.full(len(b_y_test), train_mean if not np.isnan(train_mean) else 0))
 
             elif len(preds) > len(b_y_test):
                 # Truncate predictions to match test set length
-                print("Warning: Predictions are longer than test set. Truncating to match length.")
+                #print("Warning: Predictions are longer than test set. Truncating to match length.")
                 preds = preds[:len(b_y_test)]
 
             elif len(preds) < len(b_y_test):
                 # Extend predictions with the last value to match test set length
-                print("Warning: Predictions are shorter than test set. Padding with last prediction value.")
+                #print("Warning: Predictions are shorter than test set. Padding with last prediction value.")
                 last_valid_pred = preds[-1] if not np.isnan(preds[-1]) else (np.nanmean(preds) if not np.isnan(np.nanmean(preds)) else 0)
                 padding = [last_valid_pred] * (len(b_y_test) - len(preds))
                 preds = list(np.append(preds, padding))
 
         # Append predictions for this cycle to the global list
-        print(f"Before appending, preds for cycle {cycle + 1}: {preds}")
+        #print(f"Before appending, preds for cycle {cycle + 1}: {preds}")
         if model_name not in all_preds.keys():
             all_preds[model_name] = {}
         all_preds[model_name][f'cycle {cycle + 1}'] = preds #.extend(preds)  # Use `.extend()` to add multiple predictions to the global list
 
-        print(f"Updated all_preds after Cycle {cycle + 1}: {all_preds}")
+        #print(f"Updated all_preds after Cycle {cycle + 1}: {all_preds}")
 
         # Calculate metrics for each lag
         metrics = []
@@ -733,7 +740,7 @@ def backtest_model(country_data, y_train_arima, model, model_name, model_type, t
                 'accuracy': accuracy
             })
 
-            print(f"Lag {lag}: Bias={bias:.2f}%, Accuracy={accuracy:.2f}%, MAPE={mape:.2f}%")
+            #print(f"Lag {lag}: Bias={bias:.2f}%, Accuracy={accuracy:.2f}%, MAPE={mape:.2f}%")
             
         if model_name not in all_cycle_metrics.keys():
             all_cycle_metrics[model_name] = {}
@@ -827,7 +834,7 @@ def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_cons
     best_models = {}
 
     for country, country_data in backtesting_results.items():
-        print(f"\nSelecting the best model for {country}...")
+        #print(f"\nSelecting the best model for {country}...")
         model_scores = {}
 
         # Access the 'metrics' dictionary for the country
@@ -870,7 +877,7 @@ def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_cons
                 )
 
                 model_scores[model_name] = score
-                print(f"Model: {model_name}, Score: {score:.2f}")
+                #print(f"Model: {model_name}, Score: {score:.2f}")
             except Exception as e:
                 print(f"Error calculating score for model {model_name} in {country}: {e}")
                 model_scores[model_name] = float("-inf")  # Penalize invalid models
@@ -881,7 +888,7 @@ def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_cons
             "model": best_model,
             "score": model_scores[best_model]
         }
-        print(f"Best model for {country}: {best_model} with score {model_scores[best_model]:.2f}")
+        #print(f"Best model for {country}: {best_model} with score {model_scores[best_model]:.2f}")
 
     # Save the best models to the results dictionary
     results["best_models"] = best_models
@@ -965,9 +972,10 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     # Train and evaluate a single default ML models that is obtained on all countries
     xgb_model = XGBRegressor()
     lgb_model = LGBMRegressor()
-
-    xgb_results = train_and_evaluate_model(xgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
-    lgb_results = train_and_evaluate_model(lgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
+    #print(f'test before training: {xgb_model}')
+    xgb_model, xgb_results = train_and_evaluate_model(xgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
+    #print(f'test after training: {xgb_model}')
+    lgb_model, lgb_results = train_and_evaluate_model(lgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
 
     # Metrics for both single default ML models that is obtained on all countries on validation and blind test set
     results['default_xgb_metrics'] = xgb_results['metrics']
@@ -1039,12 +1047,24 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     #print(f"Are there duplicates in combined_df? {combined_df.duplicated().any()}")   #Are there duplicates in combined_df? False
 
     
-    re_xgb_model, re_xgb_metrics, re_xgb_test_preds, re_xgb_all_preds = retrain_and_evaluate(
+
+    re_xgb_model, re_xgb_res = retrain_and_evaluate(
         XGBRegressor, best_xgb_params, X_combined, y_combined, X_blind_test, y_blind_test, combined_df, target_column
     )
-    re_lgb_model, re_lgb_metrics, re_lgb_test_preds, re_lgb_all_preds = retrain_and_evaluate(
+
+    re_xgb_metrics = re_xgb_res['metrics']
+    re_xgb_test_preds = re_xgb_res['test_preds']
+    re_xgb_actuals = re_xgb_res['test_actuals']
+    re_xgb_all_preds = re_xgb_res['all_countries_predictions']
+
+    re_lgb_model, re_lgb_res = retrain_and_evaluate(
         LGBMRegressor, best_lgb_params, X_combined, y_combined, X_blind_test, y_blind_test, combined_df, target_column
     )
+
+    re_lgb_metrics = re_lgb_res['metrics']
+    re_lgb_test_preds = re_lgb_res['test_preds']
+    re_lgb_actuals = re_lgb_res['test_actuals']
+    re_lgb_all_preds = re_lgb_res['all_countries_predictions']
 
 
     # Add retrained all-country predictions
@@ -1111,10 +1131,10 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     
     # Add a print statement to confirm and summarize backtesting results
     #print("\nBacktesting completed successfully.")
-    if 'backtesting_results' in results and results['backtesting_results']:
-        print(f"Backtesting results stored. Number of models backtested: {len(results['backtesting_results'])}")
-    else:
-        print("No backtesting results were produced. Please check the inputs and model configurations.")
+    # if 'backtesting_results' in results and results['backtesting_results']:
+    #     print(f"Backtesting results stored. Number of models backtested: {len(results['backtesting_results'])}")
+    # else:
+    #     print("No backtesting results were produced. Please check the inputs and model configurations.")
 
     results['time_series_models'] = {
         'ARIMA': arima_models,
@@ -1128,9 +1148,9 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
 
     # Select the best model for each country
     results = select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_consistency=0.2)
-    print("Best Model Selection:", results.get("best_models"))
+    #print("Best Model Selection:", results.get("best_models"))
     #print(results)  # Check if `results` is None or has the expected structure
-    print(results.keys())  # Check if 'country_metrics' is part of the keys
+    #print(results.keys())  # Check if 'country_metrics' is part of the keys
 
     return results
 
