@@ -41,18 +41,29 @@ app.title = "Insurance Consultant Service"
 # Define the layout of the app
 app.layout = html.Div([
     html.Header([
-        html.H1("Wellcome to BaNex Consulting Insurance Service", style={'textAlign': 'center', 'fontSize': '48px', 'marginTop': '10px'}),
-    ], style={'backgroundColor': '#f0f0f0', 'padding': '50px'}),
+        html.H1("BaNex Consulting Data Insight Service", style={'textAlign': 'center', 'fontSize': '40px', 'marginTop': '10px', 'color': 'white'}),
+    ], style={'backgroundColor': '#003366', 'padding': '50px'}),
 
     # Navigation tabs
-    dcc.Tabs(id='tabs-example', value='home', children=[
-        dcc.Tab(label='Business Objectives', value='home'),
-        dcc.Tab(label='Data Overview', value='tab-1'),
-        dcc.Tab(label='Exploratory Data Analysis', value='tab-2'),
-        dcc.Tab(label='Model Performance', value='tab-3'),
-        dcc.Tab(label='Model Robustness', value='tab-4'),
-        dcc.Tab(label='Business Solution', value='tab-5'),
-    ]),
+    dcc.Tabs(
+        id='tabs-example', 
+        value='home', 
+        children=[
+            dcc.Tab(label='Business Objectives', value='home'),
+            dcc.Tab(label='Data Overview', value='tab-1'),
+            dcc.Tab(label='Exploratory Data Analysis', value='tab-2'),
+            dcc.Tab(label='Model Performance', value='tab-3'),
+            dcc.Tab(label='Model Robustness', value='tab-4'),
+            dcc.Tab(label='Business Solution', value='tab-5'),
+        ],
+        style={
+            'fontWeight': 'bold',  # Make the tab names bold
+            'fontSize': '16px',  # Increase font size for the tab names
+        },
+        parent_style={
+            'margin': '0 auto',  # Center the tabs
+        }
+    ),
 
     # Content section that changes with each tab
     html.Div(id='tabs-content', style={'textAlign': 'center', 'padding': '0px', 'height': '50vh'})
@@ -322,11 +333,20 @@ def download_table(n_clicks):
     
     # Extract best models as a DataFrame
     best_models = results.get("best_models", {})
-    data = [{"Country": country, "Best Fit Model for Life LOB Data": model_info["model"]} for country, model_info in best_models.items()]
+    predictions = results.get("ml_predictions", {}).get("all_countries_predictions", {})  # check the dictionary
+    # Combine the data
+    data = [
+        {
+            "Country": country,
+            "Best Fit Model for Life LOB Data": model_info["model"],
+            "Prediction Values": ", ".join(map(str, predictions.get(model_info["model"], [])))  # Format predictions as a comma-separated string
+        }
+        for country, model_info in best_models.items()
+    ]
     df = pd.DataFrame(data)
 
     # Convert the DataFrame to a downloadable CSV
-    return dcc.send_data_frame(df.to_csv, "best_models.csv", index=False)
+    return dcc.send_data_frame(df.to_csv, "Best Fit Models With Prediction Values for Life LOB.csv", index=False)
 
 
 

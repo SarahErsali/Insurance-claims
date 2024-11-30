@@ -14,7 +14,7 @@ def render_home():
                 "The project focuses on the European insurance life sector and is based on annually reported Solvency II information. "
                 "This ensures that the dataset provides comprehensive coverage across all countries in the European Economic Area (EEA), "
                 "with consistent and reliable reporting standards. In this project, the key goal is to predict net claims incurred through developing predictive models.",
-                style={'lineHeight': '2', 'marginBottom': '30px', 'textAlign': 'justify'}  # Justify paragraph text
+                style={'lineHeight': '2', 'marginBottom': '30px', 'textAlign': 'justify', 'fontSize': '18px',}  # Justify paragraph text
             )
         ]),
 
@@ -26,10 +26,10 @@ def render_home():
                 'textAlign': 'left',  # Align title to the left
             }),
             html.P(
-                "For this project, a combination of advanced machine learning models, including XGBoost and LightGBM, and time series models, such as ARIMA and Moving Average, "
+                "In this project, a combination of advanced machine learning models, including XGBoost and LightGBM, and time series models, such as ARIMA and Moving Average, "
                 "were meticulously developed. These models are designed to accurately predict net claims incurred by leveraging a diverse range of features, ensuring robust "
                 "and insightful predictions.",
-                style={'lineHeight': '2', 'marginBottom': '30px', 'textAlign': 'justify'}  # Justify paragraph text
+                style={'lineHeight': '2', 'marginBottom': '30px', 'textAlign': 'justify', 'fontSize': '18px',}  # Justify paragraph text
             )
         ]),
 
@@ -63,7 +63,7 @@ def render_home():
                 "The features and factors used in the models play a critical role in understanding how external "
                 "factors, such as the economy and catastrophic events, influence the number of claims. This aids in "
                 "refining the insurance pricing strategy and improving risk management practices.",
-                style={'lineHeight': '2', 'marginBottom': '30px', 'textAlign': 'justify'}  # Justify paragraph text
+                style={'lineHeight': '2', 'marginBottom': '30px', 'textAlign': 'justify', 'fontSize': '18px',}  # Justify paragraph text
             )
         ])
     ], style={

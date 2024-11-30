@@ -9,6 +9,7 @@ def render_tab1():
                 'lineHeight': '2',  # Line spacing
                 'marginBottom': '30px',  # Bottom margin for spacing
                 'textAlign': 'justify',  # Justified alignment
+                'fontSize': '18px',
             }
         ),
 

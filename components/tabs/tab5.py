@@ -12,9 +12,17 @@ def generate_best_model_table(results):
         html.Div: Dash HTML layout containing the table and download button.
     """
     best_models = results.get("best_models", {})
+    predictions = results.get("ml_predictions", {}).get("all_countries_predictions", {}) # check dictionary
     
     # Prepare the data for the table
-    data = [{"Country": country, "Best Fit Model": model_info["model"]} for country, model_info in best_models.items()]
+    data = [
+        {
+            "Country": country,
+            "Best Fit Model": model_info["model"],
+            "Prediction Values": ", ".join(map(str, predictions.get(model_info["model"], [])))  # Format predictions as a comma-separated string
+        }
+        for country, model_info in best_models.items()
+    ]
 
     # Convert to a DataFrame for sorting (optional)
     df = pd.DataFrame(data)
@@ -33,7 +41,7 @@ def generate_best_model_table(results):
                     "marginBottom": "20px",  # Spacing below the paragraph
                     "textAlign": "justify",  # Justified text
                     "marginTop": "2cm",  # Space from the top of the page
-                    "fontSize": "16px",  # Font size for readability
+                    "fontSize": "18px",  # Font size for readability
                     "paddingLeft": "5cm",  # Padding on the left for alignment
                     "paddingRight": "5cm",  # Padding on the right for alignment
                 }
@@ -73,7 +81,8 @@ def generate_best_model_table(results):
                     id='best-models-table',
                     columns=[
                         {"name": "Country", "id": "Country"},
-                        {"name": "Best Fit Model for Life LOB", "id": "Best Fit Model"}
+                        {"name": "Best Fit Model for Life LOB", "id": "Best Fit Model"},
+                        {"name": "Prediction Values", "id": "Prediction Values"}
                     ],
                     data=df.to_dict("records"),
                     style_table={

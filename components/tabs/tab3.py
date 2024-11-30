@@ -23,12 +23,18 @@ def render_tab3():
                     # Dropdown for country selection
                     html.Div(
                         [
-                            html.Label("Select Country:", style={'fontWeight': 'bold', 'fontSize': '18px', 'textAlign': 'left'}),
+                            html.Label(
+                                "Select Country:", 
+                                style={'fontWeight': 'bold', 'fontSize': '18px', 'textAlign': 'left'}
+                            ),
                             dcc.Dropdown(
                                 id='tab3-country-dropdown',
                                 options=[
                                     {'label': 'All Countries', 'value': 'All Countries'}
-                                ] + [{'label': country, 'value': country} for country in results['country_metrics'].keys()],
+                                ] + (
+                                    [{'label': country, 'value': country} for country in results.get('country_metrics', {}).keys()]
+                                    if results else []
+                                ),
                                 value='All Countries',  # Default selection
                                 style={
                                     'width': '300px',
@@ -43,7 +49,10 @@ def render_tab3():
                     # Dropdown for model and dataset selection
                     html.Div(
                         [
-                            html.Label("Select Model:", style={'fontWeight': 'bold', 'fontSize': '18px', 'textAlign': 'left'}),
+                            html.Label(
+                                "Select Model:", 
+                                style={'fontWeight': 'bold', 'fontSize': '18px', 'textAlign': 'left'}
+                            ),
                             dcc.Dropdown(
                                 id='tab3-model-dropdown',
                                 options=[
@@ -103,4 +112,5 @@ def render_tab3():
             'padding': '20px',  # Add padding around the entire layout
         }
     )
+
 
