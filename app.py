@@ -202,24 +202,32 @@ def update_model_predictions(selected_country, selected_model):
         if 'Validation' in selected_model:
             dataset = 'validation'
             model_name = selected_model.replace(' Validation', '')
+            start_date = "2022-01-01"
+            end_date = "2023-03-31"
         elif 'Blind Test' in selected_model:
             dataset = 'blind_test'
             model_name = selected_model.replace(' Blind Test', '')
+            start_date = "2023-04-01"
+            end_date = "2024-03-31"
         else:
             dataset = 'blind_test'
             model_name = selected_model  # For ARIMA and Moving Average
+            start_date = "2023-04-01"
+            end_date = "2024-03-31"
 
         print(f"Parsed Model Name: {model_name}, Dataset: {dataset}")
 
         # Handle "All Countries" option
         if selected_country == 'All Countries':
-            predictions = results['ml_predictions']['all_countries_predictions'].get(model_name, None)
+            
             # For default ML models, fetch actuals from results['ml_predictions']
             if model_name in ['Default XGBoost', 'Default LightGBM']:
-                actual_values = results['ml_predictions'][f'{dataset}_actuals'].get(model_name, None)
+                predictions = results['predictions'][f'{dataset}_predictions'][model_name]
+                actual_values = results['actuals'][f'{dataset}_actuals'][model_name]
             else:
                 # For retrained ML models, ARIMA, and Moving Average, fetch actuals differently
-                actual_values = results['ml_predictions'][f'{dataset}_actuals'].get('Default XGBoost', None)
+                predictions = results['predictions'][f'{dataset}_predictions'][model_name]
+                actual_values = results['actuals'][f'{dataset}_actuals'][model_name]
 
         else:
             # Get country-specific data
@@ -269,9 +277,10 @@ def update_model_predictions(selected_country, selected_model):
         #     return html.Div("Error: Mismatched lengths between actual values and predictions.", style={"color": "red"})
 
         # Add actual values to the plot
+        date_range = pd.date_range(start=start_date, end=end_date, freq='QS')
         if actual_values is not None and len(actual_values) > 0:
             fig.add_trace(go.Scatter(
-                x=actual_values.index if hasattr(actual_values, 'index') else list(range(len(actual_values))),
+                x=date_range, #actual_values.index if hasattr(actual_values, 'index') else list(range(len(actual_values))),
                 y=actual_values.values if hasattr(actual_values, 'values') else actual_values,
                 mode='lines',
                 name='Actual',
@@ -281,7 +290,7 @@ def update_model_predictions(selected_country, selected_model):
         # Add model predictions to the plot
         if predictions is not None and len(predictions) > 0:
             fig.add_trace(go.Scatter(
-                x=predictions.index if hasattr(predictions, 'index') else list(range(len(predictions))),
+                x=date_range, #predictions.index if hasattr(predictions, 'index') else list(range(len(predictions))),
                 y=predictions.values if hasattr(predictions, 'values') else predictions,
                 mode='lines',
                 name=f'{selected_model}'
@@ -364,10 +373,13 @@ def update_backtesting_charts(selected_country, selected_model):
         return no_data_msg, no_data_msg
 
     # Retrieve backtesting results
-    backtesting_results = results.get("backtesting_results", {})
-    country_data = backtesting_results.get(selected_country, {})
-    model_data = country_data.get("metrics", {}).get(selected_model, {})
+    backtesting_results = results["backtesting_results"]
 
+    country_data = backtesting_results[selected_country]
+    #print(f'TEST {country_data}')
+    model_data = country_data.get("metrics", {}).get(selected_model, {})
+    #print(f'TEST {model_data}')
+    
     if not model_data:
         no_data_msg = html.Div(f"No data available for {selected_country} and {selected_model}.", style={"color": "red"})
         return no_data_msg, no_data_msg
@@ -376,11 +388,12 @@ def update_backtesting_charts(selected_country, selected_model):
     fig_cycles = go.Figure()
     for metric in ["mean_bias", "mean_accuracy", "mean_mape"]:
         fig_cycles.add_trace(go.Bar(
-            x=[cycle for cycle in model_data.keys()],  # Cycle names (e.g., "cycle 1", "cycle 2")
+            x= list(model_data.keys()),  # Cycle names (e.g., "cycle 1", "cycle 2")
             y=[model_data[cycle][metric] for cycle in model_data.keys()],  # Metric values for each cycle
-            name=metric.replace("_", " ").capitalize()
+                        name=metric.replace("_", " ").capitalize()
         ))
-
+        print('display y axis values', [model_data[cycle][metric] for cycle in model_data.keys()])
+        print('display keys', model_data.keys())
     fig_cycles.update_layout(
         title=f"Metrics Across Cycles for {selected_model} in {selected_country}",
         barmode='group',

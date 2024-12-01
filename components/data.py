@@ -138,7 +138,8 @@ def prepare_for_arima_ma(combined_df, target_column):
     #print(f"arima_df index frequency: {arima_df.index.freq}")
     #print(f"---- ARIMA dataset size: {arima_df.shape[0]}")  #ARIMA dataset size: 31
 
-    return arima_df
+    return arima_df.iloc[5:]  # Drop the first 5 rows of each country's data for ARIMA modeling
+
 
 
 

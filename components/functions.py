@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import os
 import joblib
 from components.data import prepare_for_arima_ma
-
+import pprint
 
 
 
@@ -351,6 +351,10 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
     for country in countries:
         #print(f"\n----- Evaluating models for country: {country}")
         country_data = combined_df[combined_df['Country'] == country]
+        
+        
+        
+        #print(f"arima_df after dropping the first 5 rows for ARIMA:\n{arima_df.head()}")
 
         # Splitting data for the specific country
         (X_train_country, y_train_country), (X_val_country, y_val_country), (X_blind_test_country, y_blind_test_country) = split_data(
@@ -361,21 +365,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
         )
 
         #print(f"Before dropping rows: y_train size: {len(y_train_country)}, y_val size: {len(y_val_country)}, y_blind_test size: {len(y_blind_test_country)}")
-
-        # Use arima_df for ARIMA and MA models
-        arima_df = prepare_for_arima_ma(country_data, target_column)
         
-        # Drop the first 5 rows of each country's data for ARIMA modeling
-        arima_df = arima_df.iloc[5:]
-        #print(f"arima_df after dropping the first 5 rows for ARIMA:\n{arima_df.head()}")
-
-        # Adjust train and validation sizes for combined train and val after dropping rows
-        y_train_country = y_train_country.iloc[5:]
-        #print(f"After dropping rows: y_train size: {len(y_train_country)}, y_val size: {len(y_val_country)}, y_blind_test size: {len(y_blind_test_country)}")
-
-        # Combine train and validation for ARIMA
-        y_combined_arima = pd.concat([y_train_country, y_val_country])
-        #print(f"y_combined_arima size for ARIMA training: {len(y_combined_arima)}")
 
         # y_blind_test_country_arima = arima_df[y_blind_test_country].iloc[5:]
         # print(f"y_blind_test_country_arima after dropping the first 5 rows for ARIMA:\n{y_blind_test_country_arima.head()}")
@@ -384,11 +374,24 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
         country_results = {}
 
         # Evaluate Default ML Models
+        #print(f"investigate what I have in models: {models}")
         for model_name, model in models.items():
+
             #print(f"*** Processing default model: {model_name}")
             try:
-                #print(f"Predicting for validation set with default {model_name}...")
 
+                #if model_name != 'ARIMA':
+                    
+
+                
+
+                #y_train_country = y_train_country.iloc[5:]
+                #print(f"After dropping rows: y_train size: {len(y_train_country)}, y_val size: {len(y_val_country)}, y_blind_test size: {len(y_blind_test_country)}")
+                #if model_name == 'ARIMA':
+                
+                #print(f"y_combined_arima size for ARIMA training: {len(y_combined_arima)}")
+
+                #print(f"Predicting for validation set with default {model_name}...")
                 val_preds = model.predict(X_val_country)
                 #print(f"Validation predictions default: {val_preds[:5]} (showing first 5)")
 
@@ -413,11 +416,12 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
 
                 #print(f"Storing results for default {model_name}")
                 country_results[model_name] = {
+
                     'metrics': metrics,
                     'validation_predictions': val_preds,
-                    'validation_actuals': y_val_country,
+                    'validation_actuals': y_val_country.reset_index(drop=True),
                     'blind_test_predictions': blind_test_preds,
-                    'blind_test_actuals': y_blind_test_country 
+                    'blind_test_actuals': y_blind_test_country.reset_index(drop=True) 
                 }
                 #print(f"Updated country_results after processing {model_name}:")
                 #print(country_results)
@@ -427,8 +431,10 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
 
 
         # Evaluate Retrained ML Models
+        print(f"investigate what I have in re-models: {retrained_models}")
+
         for model_name, model in retrained_models.items():
-            print(f"+++ Processing retrained model: {model_name}")
+            #print(f"+++ Processing retrained model: {model_name}")
             try:
                 #print(f"Predicting blind test set with retrained model {model_name}")
                 blind_test_preds = model.predict(X_blind_test_country)
@@ -448,7 +454,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
                 country_results[model_name] = {
                     'metrics': metrics,
                     'blind_test_predictions': blind_test_preds,
-                    'blind_test_actuals': y_blind_test_country
+                    'blind_test_actuals': y_blind_test_country.reset_index(drop=True)
                 }
 
                 #print(f"Updated country_results after processing retrained model {model_name}:")
@@ -464,6 +470,20 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
         
         # Evaluate ARIMA Model
         try:
+
+            # Use arima_df for ARIMA and MA models
+            arima_df = prepare_for_arima_ma(country_data, target_column)
+
+            (X_train_country, y_train_country), (X_val_country, y_val_country), (X_blind_test_country, y_blind_test_country) = split_data(
+            arima_df, train_start="2017-10-01", train_end="2021-12-31", 
+            val_start=val_start, val_end=val_end, 
+            blind_test_start=blind_test_start, blind_test_end=blind_test_end, 
+            target_column=target_column
+            )
+            
+            # Combine train and validation for ARIMA
+            y_combined_arima = pd.concat([y_train_country, y_val_country])
+
             future_forecast_steps = 3
             arima_model, arima_forecast, future_arima_forecast = train_arima_model(
                 y_combined=y_combined_arima,  # Use the full ARIMA-preprocessed target column (arima_df[target_column])
@@ -485,16 +505,16 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
             arima_models[country] = arima_model
             #print(f"@###@Updated ARIMA models dictionary: {arima_models}")
 
-            arima_forecast_reset = arima_forecast.reset_index(drop=True)
-            y_blind_test_reset = y_blind_test_country.reset_index(drop=True)
+            #arima_forecast_reset = arima_forecast.reset_index(drop=True)
+            #y_blind_test_reset = y_blind_test_country.reset_index(drop=True)
             #print(f"Mean of actual values (y_blind_test_country): {np.mean(y_blind_test_country)}")
             #print(f"Mean of forecasted values (arima_forecast): {np.mean(arima_forecast)}")
-            print(np.mean(arima_forecast_reset - y_blind_test_reset))
+            print(np.mean(arima_forecast - y_blind_test_country))
             arima_metrics = {
                 'blind_test': {
                     'MAPE%': mean_absolute_percentage_error(y_blind_test_country, arima_forecast) * 100,
                     'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, arima_forecast) * 100,
-                    'Bias%': np.nan if np.mean(y_blind_test_country) == 0 else (np.mean(arima_forecast_reset - y_blind_test_reset) / np.mean(y_blind_test_reset)) * 100  #Avoided division by zero when calculating 
+                    'Bias%': np.nan if np.mean(y_blind_test_country) == 0 else (np.mean(arima_forecast - y_blind_test_country) / np.mean(y_blind_test_country)) * 100  #Avoided division by zero when calculating 
                 }
             }
             country_results['ARIMA'] = {
@@ -512,6 +532,18 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
 
         # Evaluate Moving Average Model
         try:
+
+            # Use arima_df for ARIMA and MA models
+            ma_df = prepare_for_arima_ma(country_data, target_column)
+
+            (X_train_country, y_train_country), (X_val_country, y_val_country), (X_blind_test_country, y_blind_test_country) = split_data(
+            ma_df, train_start="2017-10-01", train_end="2021-12-31", 
+            val_start=val_start, val_end=val_end, 
+            blind_test_start=blind_test_start, blind_test_end=blind_test_end, 
+            target_column=target_column
+            )
+
+
             ma_model, ma_forecast, future_ma_forecast = train_ma_model(
                 y_combined=y_combined,  # Use the full MA-preprocessed target column (arima_df[target_column])
                 blind_test_data=y_blind_test_country,  # Pass the blind test set
@@ -530,7 +562,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
             country_results['Moving Average'] = {
                 'metrics': ma_metrics,
                 'blind_test_predictions': ma_forecast,
-                'blind_test_actuals': y_blind_test_country,
+                'blind_test_actuals': y_blind_test_country.reset_index(drop=True),
                 'future_forecast': future_ma_forecast
             }
             #print(f"Country MA results: {country_results['Moving Average']}")
@@ -756,7 +788,7 @@ def backtest_model(country_data, y_train_arima, model, model_name, model_type, t
         
         
     #print("Backtesting complete.")
-    print(f"Final accumulated predictions across all cycles: {all_preds}")
+    #print(f"Final accumulated predictions across all cycles: {all_preds}")
 
     return all_cycle_metrics, all_preds
 
@@ -978,14 +1010,17 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     lgb_model, lgb_results = train_and_evaluate_model(lgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
 
     # Metrics for both single default ML models that is obtained on all countries on validation and blind test set
-    results['default_xgb_metrics'] = xgb_results['metrics']
-    results['default_lgb_metrics'] = lgb_results['metrics']
-    print(results['default_xgb_metrics'])
-    print(results['default_lgb_metrics'])
+    results['metrics'] = {
+        'Default XGBoost': xgb_results['metrics'],
+        'Default LightGBM': lgb_results['metrics']
+        }
+    
+    print(results['metrics']['Default XGBoost'])
+    print(results['metrics']['Default LightGBM'])
 
 
     # Save all-country, validation, and blind test predictions for default models
-    results['ml_predictions'] = {
+    results['predictions'] = {
         'all_countries_predictions': {
             'Default XGBoost': xgb_results['all_countries_predictions'],
             'Default LightGBM': lgb_results['all_countries_predictions']
@@ -994,17 +1029,23 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
             'Default XGBoost': xgb_results['validation_predictions'],
             'Default LightGBM': lgb_results['validation_predictions']
         },
-        'validation_actuals': {
-            'Default XGBoost': xgb_results['validation_actuals'],
-            'Default LightGBM': lgb_results['validation_actuals']
-        },
+        
         'blind_test_predictions': {
             'Default XGBoost': xgb_results['blind_test_predictions'],
             'Default LightGBM': lgb_results['blind_test_predictions']
+        }
+        
+    }
+
+    results['actuals'] = {
+        
+        'validation_actuals': {
+            'Default XGBoost': xgb_results['validation_actuals'].reset_index(drop=True),
+            'Default LightGBM': lgb_results['validation_actuals'].reset_index(drop=True)
         },
         'blind_test_actuals': {
-            'Default XGBoost': xgb_results['blind_test_actuals'],
-            'Default LightGBM': lgb_results['blind_test_actuals']
+            'Default XGBoost': xgb_results['blind_test_actuals'].reset_index(drop=True),
+            'Default LightGBM': lgb_results['blind_test_actuals'].reset_index(drop=True)
         }
     }
 
@@ -1067,12 +1108,13 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     re_lgb_all_preds = re_lgb_res['all_countries_predictions']
 
 
-    # Add retrained all-country predictions
-    results['ml_predictions']['blind_test_predictions']['Retrained XGBoost'] = re_xgb_test_preds
-    results['ml_predictions']['blind_test_predictions']['Retrained LightGBM'] = re_lgb_test_preds
-    results['ml_predictions']['all_countries_predictions']['Retrained XGBoost'] = re_xgb_all_preds
-    results['ml_predictions']['all_countries_predictions']['Retrained LightGBM'] = re_lgb_all_preds
-
+    # Add retrained all-country predictions and actuals
+    results['predictions']['blind_test_predictions']['Retrained XGBoost'] = re_xgb_test_preds
+    results['predictions']['blind_test_predictions']['Retrained LightGBM'] = re_lgb_test_preds
+    results['predictions']['all_countries_predictions']['Retrained XGBoost'] = re_xgb_all_preds
+    results['predictions']['all_countries_predictions']['Retrained LightGBM'] = re_lgb_all_preds
+    results['actuals']['blind_test_actuals']['Retrained XGBoost'] = re_xgb_actuals.reset_index(drop=True)
+    results['actuals']['blind_test_actuals']['Retrained LightGBM'] = re_lgb_actuals.reset_index(drop=True)
 
     models = {
         'Default XGBoost': xgb_model,
@@ -1084,14 +1126,16 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     }
 
     # Add ML models to results
-    results['ml_models'] = {
-        'default_models': models,
-        'retrained_models': retrained_models
+    results['models'] = {
+        'Default XGBoost': xgb_model,
+        'Default LightGBM': lgb_model,
+        'Retrained XGBoost': re_xgb_model,
+        'Retrained LightGBM': re_lgb_model
     }
-    results['ml_metrics'] = {
-    'retrained_xgb_metrics': re_xgb_metrics,
-    'retrained_lgb_metrics': re_lgb_metrics
-}
+    results['metrics']['Retrained XGBoost'] = re_xgb_metrics
+    results['metrics']['Retrained LightGBM'] = re_lgb_metrics
+    
+
 
 
 
@@ -1152,6 +1196,15 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     #print(results)  # Check if `results` is None or has the expected structure
     #print(results.keys())  # Check if 'country_metrics' is part of the keys
 
+    
+
+    # Pretty-print using json.dumps
+    #print(json.dumps(results, indent=4))
+
+    # Use pprint to print the dictionary
+    #pprint.pprint(results)
+    print('predictions for def xgb',results['predictions']['blind_test_predictions']['Default XGBoost'])
+    print('actuals for def xgb',results['actuals']['blind_test_actuals']['Default XGBoost'])
     return results
 
 
