@@ -86,6 +86,8 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
     # if combined_df['NET Claims Incurred'].isnull().any():
     #     print("Warning: NaNs detected in target column after preprocessing.")
 
+
+
     return combined_df
 
 
@@ -99,7 +101,7 @@ def prepare_for_arima_ma(combined_df, target_column):
     #print("\n----- Pre-processing ARIMA/MA dataset")
 
     # Extract necessary columns
-    arima_df = combined_df[['Date', target_column]].copy()
+    arima_df = combined_df[['Date', 'Country', target_column]].copy()
     #print(f"Initial arima_df shape: {arima_df.shape}")
     #print(f"Initial arima_df head:\n{arima_df.head()}")
 

@@ -23,6 +23,8 @@ import os
 import joblib
 from components.data import prepare_for_arima_ma
 import pprint
+import traceback
+
 
 
 
@@ -182,7 +184,7 @@ def retrain_and_evaluate(model_class, best_params, X_combined, y_combined, X_bli
 
 #If the mean of y_blind_test_country (the actual values) is 0, this calculation will result in a division by zero, leading to NaN
 
-def train_arima_model(y_combined, blind_test_data, blind_test_steps=None, future_forecast_steps = 3, max_p=3, max_q=3, max_d=1):
+def train_arima_model(y_combined, blind_test_data, blind_test_steps=None, future_forecast_steps = 5, max_p=3, max_q=3, max_d=1):
     """
     Train an ARIMA model on the provided target series and forecast future values.
 
@@ -268,18 +270,18 @@ def train_arima_model(y_combined, blind_test_data, blind_test_steps=None, future
         #     print("Warning: Invalid values in ARIMA blind test forecast. Filling with mean of y_combined.")
         #     arima_forecast = pd.Series([y_combined.mean()] * blind_test_steps)
 
-        # if future_arima_forecast.isnull().any() or np.isinf(future_arima_forecast).any():
-        #     print("Warning: Invalid values in ARIMA future forecast. Filling with mean of y_combined.")
-        #     future_arima_forecast = pd.Series([y_combined.mean()] * future_forecast_steps)
+        if future_arima_forecast.isnull().any() or np.isinf(future_arima_forecast).any():
+            print("Warning: Invalid values in ARIMA future forecast. Filling with mean of y_combined.")
+            future_arima_forecast = pd.Series([y_combined.mean()] * future_forecast_steps)
         
         # Handle invalid forecasts with forward/backward filling method
         if arima_forecast.isnull().any() or np.isinf(arima_forecast).any():
             print("Warning: Invalid values in ARIMA blind test forecast. Filling using forward and backward fill.")
             arima_forecast = arima_forecast.fillna(method='ffill').fillna(method='bfill')
 
-        if future_arima_forecast.isnull().any() or np.isinf(future_arima_forecast).any():
-            print("Warning: Invalid values in ARIMA future forecast. Filling using forward and backward fill.")
-            future_arima_forecast = future_arima_forecast.fillna(method='ffill').fillna(method='bfill')
+        # if future_arima_forecast.isnull().any() or np.isinf(future_arima_forecast).any():
+        #     print("Warning: Invalid values in ARIMA future forecast. Filling using forward and backward fill.")
+        #     future_arima_forecast = future_arima_forecast.fillna(method='ffill').fillna(method='bfill')
 
         #print(f"ARIMA forecast (blind test): {arima_forecast}")
         #print(f"ARIMA forecast (future): {future_arima_forecast}")
@@ -380,10 +382,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
             #print(f"*** Processing default model: {model_name}")
             try:
 
-                #if model_name != 'ARIMA':
-                    
-
-                
+                                 
 
                 #y_train_country = y_train_country.iloc[5:]
                 #print(f"After dropping rows: y_train size: {len(y_train_country)}, y_val size: {len(y_val_country)}, y_blind_test size: {len(y_blind_test_country)}")
@@ -431,7 +430,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
 
 
         # Evaluate Retrained ML Models
-        print(f"investigate what I have in re-models: {retrained_models}")
+        #print(f"investigate what I have in re-models: {retrained_models}")
 
         for model_name, model in retrained_models.items():
             #print(f"+++ Processing retrained model: {model_name}")
@@ -458,7 +457,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
                 }
 
                 #print(f"Updated country_results after processing retrained model {model_name}:")
-                print(country_results)
+                #print(country_results)
 
             except Exception as e:
                 print(f"Error evaluating retrained model {model_name} for {country}: {e}")
@@ -474,17 +473,23 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
             # Use arima_df for ARIMA and MA models
             arima_df = prepare_for_arima_ma(country_data, target_column)
 
+            #print('arima columns', arima_df.columns)
+            #print('combined df columns', combined_df.columns)
+            arima_df.reset_index(inplace=True)
+
+
             (X_train_country, y_train_country), (X_val_country, y_val_country), (X_blind_test_country, y_blind_test_country) = split_data(
             arima_df, train_start="2017-10-01", train_end="2021-12-31", 
             val_start=val_start, val_end=val_end, 
             blind_test_start=blind_test_start, blind_test_end=blind_test_end, 
             target_column=target_column
             )
-            
+            #print('confirm data pass', combined_df.head())
+
             # Combine train and validation for ARIMA
             y_combined_arima = pd.concat([y_train_country, y_val_country])
 
-            future_forecast_steps = 3
+            future_forecast_steps = 5
             arima_model, arima_forecast, future_arima_forecast = train_arima_model(
                 y_combined=y_combined_arima,  # Use the full ARIMA-preprocessed target column (arima_df[target_column])
                 blind_test_data=y_blind_test_country,  # Pass the blind test set
@@ -509,7 +514,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
             #y_blind_test_reset = y_blind_test_country.reset_index(drop=True)
             #print(f"Mean of actual values (y_blind_test_country): {np.mean(y_blind_test_country)}")
             #print(f"Mean of forecasted values (arima_forecast): {np.mean(arima_forecast)}")
-            print(np.mean(arima_forecast - y_blind_test_country))
+            #print(np.mean(arima_forecast - y_blind_test_country))
             arima_metrics = {
                 'blind_test': {
                     'MAPE%': mean_absolute_percentage_error(y_blind_test_country, arima_forecast) * 100,
@@ -529,15 +534,16 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
 
         except Exception as e:
             print(f"ARIMA model evaluation failed for {country}: {e}")
+            traceback.print_exc()  # Print the stack trace
 
         # Evaluate Moving Average Model
         try:
 
             # Use arima_df for ARIMA and MA models
-            ma_df = prepare_for_arima_ma(country_data, target_column)
+            #ma_df = prepare_for_arima_ma(country_data, target_column)
 
             (X_train_country, y_train_country), (X_val_country, y_val_country), (X_blind_test_country, y_blind_test_country) = split_data(
-            ma_df, train_start="2017-10-01", train_end="2021-12-31", 
+            country_data, train_start="2016-07-01", train_end="2021-12-31", 
             val_start=val_start, val_end=val_end, 
             blind_test_start=blind_test_start, blind_test_end=blind_test_end, 
             target_column=target_column
@@ -615,7 +621,7 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles, n
         arima_df = prepare_for_arima_ma(country_data, target_column)
 
         # Drop the first 5 rows of each country's data for ARIMA
-        arima_df = arima_df.iloc[4:]
+        #arima_df = arima_df.iloc[4:]
         #print(f"arima_df after dropping the first 4 rows for ARIMA:\n{arima_df.head()}")
 
         y_train_arima = arima_df[target_column]
@@ -1015,8 +1021,8 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
         'Default LightGBM': lgb_results['metrics']
         }
     
-    print(results['metrics']['Default XGBoost'])
-    print(results['metrics']['Default LightGBM'])
+    #print(results['metrics']['Default XGBoost'])
+    #print(results['metrics']['Default LightGBM'])
 
 
     # Save all-country, validation, and blind test predictions for default models
@@ -1159,16 +1165,16 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     }
     # Add a print statement to summarize the models and their types
     #print("\nModel preparation completed.")
-    print("Model Dictionary contains the following:")
-    for i, model_group in enumerate(model_dict):
-        if isinstance(model_group, dict):
-            print(f"  Model Group {i+1} (Dictionary): {list(model_group.keys())}")
-        else:
-            print(f"  Model Group {i+1} (List): {len(model_group)} models")
+    # print("Model Dictionary contains the following:")
+    # for i, model_group in enumerate(model_dict):
+    #     if isinstance(model_group, dict):
+    #         print(f"  Model Group {i+1} (Dictionary): {list(model_group.keys())}")
+    #     else:
+    #         print(f"  Model Group {i+1} (List): {len(model_group)} models")
 
-    print("\nModel Types Mapping:")
-    for model_name, model_type in model_types.items():
-        print(f"  {model_name}: {model_type}")
+    # print("\nModel Types Mapping:")
+    # for model_name, model_type in model_types.items():
+    #     print(f"  {model_name}: {model_type}")
 
     #print(f"CALLING BACKTESTING WITH CYCLES={cycles}, LAGS={n_lags}.")
     results['backtesting_results'] = run_backtest(model_dict, model_types, combined_df=combined_df, target_column=target_column, cycles=cycles, n_lags=n_lags)
@@ -1203,8 +1209,8 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
 
     # Use pprint to print the dictionary
     #pprint.pprint(results)
-    print('predictions for def xgb',results['predictions']['blind_test_predictions']['Default XGBoost'])
-    print('actuals for def xgb',results['actuals']['blind_test_actuals']['Default XGBoost'])
+    #print('predictions for def xgb',results['predictions']['blind_test_predictions']['Default XGBoost'])
+    #print('actuals for def xgb',results['actuals']['blind_test_actuals']['Default XGBoost'])
     return results
 
 
@@ -1294,7 +1300,7 @@ def get_or_generate_results(combined_df, cycles=3):
 #         for model_name, model in all_models.items():
 #             model_type = model_types[model_name]
 #             print(f"Back testing evaluating model: {model_name} (Type: {model_type})")  # Debugging statement
-#             backtest_metrics = backtest_model(country_data, y_train_arima, model, model_type, target_column, cycles=cycles, future_forecast_steps=3)
+#             backtest_metrics = backtest_model(country_data, y_train_arima, model, model_type, target_column, cycles=cycles, future_forecast_steps=4)
 #             model_results[model_name] = backtest_metrics
 
 #             # Save backtesting results for this model
@@ -1307,7 +1313,7 @@ def get_or_generate_results(combined_df, cycles=3):
 #     return backtesting_results
 
 
-# def backtest_model(country_data, y_train_arima, model, model_type, target_column, window=26, test_size=5, cycles=3, future_forecast_steps=3):
+# def backtest_model(country_data, y_train_arima, model, model_type, target_column, window=26, test_size=5, cycles=3, future_forecast_steps=4):
 #     """
 #     Perform backtesting for a single model (ML, ARIMA, MA) on a country's data.
 

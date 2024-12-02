@@ -94,18 +94,19 @@ def generate_backtesting_charts(results):
             # right-side container for the plots
             html.Div(
                 [
-                    # Placeholder for the cycle chart
+                    # Placeholder for the accuracy chart
                     dcc.Graph(
-                        id="cycle-chart-container",
+                        id="accuracy-chart-container",
                         config={'displayModeBar': True},
                         style={
                             "width": "48%",  # Adjust width for side-by-side display
                             "display": "inline-block",
                         }
-                    ),
+                    )
+                    ,
                     # Placeholder for the lag chart
                     dcc.Graph(
-                        id="lag-chart-container",
+                        id="bias-chart-container",
                         config={'displayModeBar': True},
                         style={
                             "width": "48%",  # Adjust width for side-by-side display
