@@ -92,6 +92,7 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
 
 
 
+
 def prepare_for_arima_ma(combined_df, target_column):
     
     # Extract only the Date and target columns

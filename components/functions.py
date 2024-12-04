@@ -5,6 +5,7 @@ np.random.seed(42)
 random.seed(42)
 from xgboost import XGBRegressor
 from lightgbm import LGBMRegressor
+import lightgbm as lgb
 import statsmodels.api as sm
 from sklearn.metrics import mean_squared_error, mean_absolute_percentage_error
 import shap
@@ -24,6 +25,10 @@ import joblib
 from components.data import prepare_for_arima_ma
 import pprint
 import traceback
+import plotly.graph_objects as go
+
+
+
 
 
 
@@ -67,6 +72,7 @@ def train_and_evaluate_model(model, X_train, y_train, X_val, y_val, X_blind_test
     model.fit(X_train, y_train)
 
     val_preds = model.predict(X_val)
+    print(f"---SINGLE {model}: {val_preds[:5]}")
     metrics = {
         'validation': {
             'MAPE%': mean_absolute_percentage_error(y_val, val_preds) * 100,
@@ -115,6 +121,8 @@ def tune_model(model_class, X_train, y_train, X_val, y_val, trial_params):
             params['colsample_bytree'] = trial.suggest_float('colsample_bytree', 0.5, 1.0)
             params['reg_alpha'] = trial.suggest_int('reg_alpha', 0, 1)
             params['reg_lambda'] = trial.suggest_int('reg_lambda', 0, 1)
+            params['min_data_in_bin'] = trial.suggest_int('min_data_in_bin', 8, 10) 
+            params['min_data_in_leaf'] = trial.suggest_int('min_data_in_leaf', 8, 10)
 
             # For LightGBM-specific parameter if using LightGBM trials
             if 'num_leaves' in trial_params:
@@ -123,8 +131,8 @@ def tune_model(model_class, X_train, y_train, X_val, y_val, trial_params):
             #print("Trial parameters generated:", params)
 
             # suppress warnings for LightGBM
-            if model_class.__name__ == 'LGBMClassifier' or model_class.__name__ == 'LGBMRegressor':
-                params['verbose'] = -1
+            #if model_class.__name__ == 'LGBMClassifier' or model_class.__name__ == 'LGBMRegressor':
+                #params['verbose'] = -1
         
             # Create and train model with these parameters
             model = model_class(**params, random_state=42)
@@ -155,6 +163,7 @@ def retrain_and_evaluate(model_class, best_params, X_combined, y_combined, X_bli
     model = model_class(**best_params, random_state=42)
     model.fit(X_combined, y_combined)
     test_preds = model.predict(X_blind_test)
+    print(f"SINGLE predictions for model {model_class}: {test_preds[:5]}")
     metrics = {
         'blind_test': {
             'MAPE%': mean_absolute_percentage_error(y_blind_test, test_preds) * 100,
@@ -317,6 +326,10 @@ def train_ma_model(y_combined, blind_test_data, window, forecast_steps):
         print(f"Warning: Not enough data points to calculate moving average with window={window}.")
         return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
 
+    # if y_combined.nunique() <= 1:
+    #     print("Warning: The input series has no variability.")
+    #     return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
+
     try:
         # Calculate the rolling mean
         ma_model = y_combined.rolling(window=window).mean()
@@ -327,11 +340,17 @@ def train_ma_model(y_combined, blind_test_data, window, forecast_steps):
             return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
 
         # Use the last rolling mean for blind test and future forecast
-        last_known_mean = ma_model.dropna().iloc[-1]
-        ma_forecast = np.full(len(blind_test_data), last_known_mean)  # Extend with last rolling mean
-        future_ma_forecast = np.full(forecast_steps, last_known_mean)  # Extend future steps with the same mean
+        ma_forecast = ma_model.dropna().iloc[-len(blind_test_data):]
+        #print("Last known rolling mean value:", last_known_mean)
+        #ma_forecast = np.full(len(blind_test_data), last_known_mean)  # Extend with last rolling mean
+        #future_ma_forecast = np.full(forecast_steps, last_known_mean)
 
-        return ma_model, ma_forecast, future_ma_forecast
+        # last_known_mean = ma_model.dropna().iloc[-1]
+        # print("Last known rolling mean value:", last_known_mean)
+        # ma_forecast = np.full(len(blind_test_data), last_known_mean)  # Extend with last rolling mean
+        #future_ma_forecast = np.full(forecast_steps)  # Extend future steps with the same mean
+        
+        return ma_model, ma_forecast #, future_ma_forecast
     except Exception as e:
         print(f"Warning: MA model calculation or forecasting failed: {e}")
         return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
@@ -392,11 +411,11 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
 
                 #print(f"Predicting for validation set with default {model_name}...")
                 val_preds = model.predict(X_val_country)
-                #print(f"Validation predictions default: {val_preds[:5]} (showing first 5)")
+                print(f"Validation predictions default model {model_name}: {val_preds[:5]} (showing first 5)")
 
                 #print(f"Predicting for blind test set with default {model_name}...")
                 blind_test_preds = model.predict(X_blind_test_country)
-                #print(f"Blind test predictions default: {blind_test_preds[:5]} (showing first 4)")
+                print(f"Blind test predictions default model {model_name}: {blind_test_preds[:5]} (showing first 4)")
 
                 #print(f"Calculating metrics for default {model_name}...")
                 metrics = {
@@ -550,7 +569,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
             )
 
 
-            ma_model, ma_forecast, future_ma_forecast = train_ma_model(
+            ma_model, ma_forecast = train_ma_model(
                 y_combined=y_combined,  # Use the full MA-preprocessed target column (arima_df[target_column])
                 blind_test_data=y_blind_test_country,  # Pass the blind test set
                 window=2,  # Rolling window size for MA
@@ -569,7 +588,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
                 'metrics': ma_metrics,
                 'blind_test_predictions': ma_forecast,
                 'blind_test_actuals': y_blind_test_country.reset_index(drop=True),
-                'future_forecast': future_ma_forecast
+                #'future_forecast': future_ma_forecast
             }
             #print(f"Country MA results: {country_results['Moving Average']}")
 
@@ -920,13 +939,21 @@ def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_cons
                 print(f"Error calculating score for model {model_name} in {country}: {e}")
                 model_scores[model_name] = float("-inf")  # Penalize invalid models
 
+        
+
         # Select the model with the highest score
         best_model = max(model_scores, key=model_scores.get)
+        #------------------------------------------
+        predictions = country_data['predictions'][best_model]
+    
+        #-------------------------------------------
+        # Store the best model and its predictions
         best_models[country] = {
             "model": best_model,
-            "score": model_scores[best_model]
+            "score": model_scores[best_model],
+            "predictions": predictions
         }
-        #print(f"Best model for {country}: {best_model} with score {model_scores[best_model]:.2f}")
+        print(f"Best model for {country}: {best_model} with prediction: {predictions}  with score {model_scores[best_model]:.2f}")
 
     # Save the best models to the results dictionary
     results["best_models"] = best_models
@@ -988,7 +1015,13 @@ def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_cons
 
 
 
+
+
+
+
 # -------------------------------- Pipeline Model ---------------------------------------------------------------------------------
+
+
 
 
 def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shock_features, shock_magnitude, cycles=3):
@@ -1000,6 +1033,7 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     blind_test_start, blind_test_end = "2023-04-01", "2024-03-31"
     n_lags = 4 
 
+    
     (X_train, y_train), (X_val, y_val), (X_blind_test, y_blind_test) = split_data(combined_df, train_start, train_end, val_start, val_end, blind_test_start, blind_test_end, target_column)
 
     # Debugging statements
@@ -1009,7 +1043,7 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
 
     # Train and evaluate a single default ML models that is obtained on all countries
     xgb_model = XGBRegressor()
-    lgb_model = LGBMRegressor()
+    lgb_model = LGBMRegressor(min_data_in_bin=1, min_data_in_leaf=1, random_state=42)
     #print(f'test before training: {xgb_model}')
     xgb_model, xgb_results = train_and_evaluate_model(xgb_model, X_train, y_train, X_val, y_val, X_blind_test, y_blind_test, combined_df, target_column)
     #print(f'test after training: {xgb_model}')
@@ -1075,10 +1109,12 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
         'subsample': ('suggest_float', 0.5, 1.0),
         'colsample_bytree': ('suggest_float', 0.5, 1.0),
         'reg_alpha': ('suggest_int', 0, 1),
-        'reg_lambda': ('suggest_int', 0, 1)
+        'reg_lambda': ('suggest_int', 0, 1),
+        'min_data_in_bin': ('min_data_in_bin', 8, 10),
+        'min_data_in_leaf': ('min_data_in_leaf', 8, 10)
     }
 
-
+    #lgb_model = LGBMRegressor(min_data_in_bin=1, min_data_in_leaf=1, random_state=42)
     best_xgb_params = tune_model(XGBRegressor, X_train, y_train, X_val, y_val, xgb_trial_params)
     best_lgb_params = tune_model(LGBMRegressor, X_train, y_train, X_val, y_val, lgb_trial_params)
 
@@ -1202,7 +1238,6 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     #print(results)  # Check if `results` is None or has the expected structure
     #print(results.keys())  # Check if 'country_metrics' is part of the keys
 
-    
 
     # Pretty-print using json.dumps
     #print(json.dumps(results, indent=4))
@@ -1248,6 +1283,12 @@ def get_or_generate_results(combined_df, cycles=3):
         joblib.dump(results, results_file)
     
     return results
+
+
+
+
+
+
 
 
 

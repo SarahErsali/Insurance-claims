@@ -50,7 +50,7 @@ app.layout = html.Div([
         value='home', 
         children=[
             dcc.Tab(label='Business Objectives', value='home'),
-            dcc.Tab(label='Data Overview', value='tab-1'),
+            dcc.Tab(label='Data Pre-processing', value='tab-1'),
             dcc.Tab(label='Exploratory Data Analysis', value='tab-2'),
             dcc.Tab(label='Model Performance', value='tab-3'),
             dcc.Tab(label='Model Robustness', value='tab-4'),
@@ -86,7 +86,11 @@ def render_content(tab):
     elif tab == 'tab-1':
         return render_tab1()
     elif tab == 'tab-2':
-        return render_tab2()
+        # Pass `results` to render_tab2
+        if results is None:
+            return html.Div("Error: No results found. Please generate the results and try again.", style={"color": "red"})
+        return render_tab2(results)
+    
     elif tab == 'tab-3':
         return render_tab3()
     elif tab == 'tab-4':
@@ -173,6 +177,164 @@ def generate_and_save_results(n_clicks):
     return "Results have been generated successfully." if results else "Failed to generate results."
 
 
+# -------------- Callback for EDA -------------------------
+def generate_feature_plot(combined_df, country, feature, allowed_features=None):
+    """
+    Generate a Plotly figure for a specific country and feature.
+
+    Args:
+        data (pd.DataFrame): The dataset containing time-series data with a 'Country' column, 'Time' column, and feature columns.
+        country (str): The name of the country to plot.
+        feature (str): The feature to visualize.
+        allowed_features (list): Optional list of features allowed for plotting.
+
+    Returns:
+        plotly.graph_objects.Figure: The generated Plotly figure.
+    """
+    if combined_df is None:
+        raise ValueError("Error: combined_df is None. Ensure the dataset is loaded properly.")
+
+    
+    # Specify allowed features if not provided
+    allowed_features = allowed_features or [
+        'NET Premiums Written',
+        'NET Premiums Earned',
+        'NET Claims Incurred'
+        #'Expenses Incurred',
+        #'Total Technical Expenses'
+    ]
+
+    # Define a color mapping for features
+    feature_colors = {
+        'NET Premiums Written': 'blue',
+        'NET Premiums Earned': 'green',
+        'NET Claims Incurred': 'orange',
+        #'Expenses Incurred': 'purple',
+        #'Total Technical Expenses': 'orange'
+    }
+
+    # Validate the selected feature
+    if feature not in allowed_features:
+        raise ValueError(f"Feature '{feature}' is not allowed for plotting. Allowed features are: {allowed_features}")
+
+    # Validate if data contains the required columns
+    required_columns = ['Country', 'Date', feature]
+    for column in required_columns:
+        if column not in combined_df.columns:
+            raise ValueError(f"Required column '{column}' is missing from the dataset.")
+
+    # Filter the dataset for the selected country
+    country_data = combined_df[combined_df['Country'] == country]
+    
+    if country_data.empty:
+        raise ValueError(f"No data found for country: {country}")
+    
+    # Determine the color for the selected feature
+    feature_color = feature_colors.get(feature, 'blue')
+
+    # Generate the plot
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        x=country_data['Date'],
+        y=country_data[feature],
+        mode='lines',
+        name=feature,
+        line=dict(color=feature_color)
+    ))
+
+    # Update layout for better visualization
+    fig.update_layout(
+        title=f"{feature} Over Time for {country}",
+        xaxis=dict(
+            title="Date",
+            showline=True,   # Ensure the x-axis line is visible
+            showgrid=False,  # Remove vertical gridlines
+            zeroline=False,   # Remove the zero line
+            linecolor='black',   # Set x-axis line color to black
+            linewidth=1
+        ),
+        yaxis=dict(
+            title=feature,
+            showline=True,   # Ensure the y-axis line is visible
+            showgrid=False,  # Remove horizontal gridlines
+            zeroline=False,   # Remove the zero line
+            linecolor='black',   # Set x-axis line color to black
+            linewidth=1
+        ),
+        template="plotly_white",
+        height=500,
+        width=800
+    )
+
+    return fig
+
+@app.callback(
+    Output('feature-plot', 'figure'),  # Note: Return a figure to update the graph
+    [Input('country-dropdown', 'value'),
+     Input('feature-dropdown', 'value')]
+)
+def update_plot(selected_country, selected_feature):
+    """
+    Update the plot based on the selected country and feature.
+
+    Args:
+        selected_country (str): The selected country from the dropdown.
+        selected_feature (str): The selected feature from the dropdown.
+
+    Returns:
+        plotly.graph_objects.Figure: The updated figure.
+    """
+    global combined_df
+
+    # Define the allowed features
+    allowed_features = [
+        'NET Premiums Written',
+        'NET Premiums Earned',
+        'NET Claims Incurred'
+        #'Expenses Incurred',
+        #'Total Technical Expenses'
+    ]
+
+    # Check if both inputs are valid
+    if not selected_country or not selected_feature:
+        selected_country = combined_df['Country'].iloc[0]
+        selected_feature = allowed_features[0]
+        # return {
+        #     'data': [],
+        #     'layout': {
+        #         'title': "Please select both a country and a feature.",
+        #         'xaxis': {'visible': False},
+        #         'yaxis': {'visible': False}
+        #     }
+        # }
+
+    try:
+        # Validate combined_df
+        if combined_df is None:
+            raise ValueError("Error: combined_df is None. Ensure it is loaded before generating plots.")
+
+        # Validate that the selected feature is allowed
+        if selected_feature not in allowed_features:
+            raise ValueError(f"Feature '{selected_feature}' is not allowed for plotting.")
+
+        # Ensure combined_df is loaded or passed dynamically
+        #combined_df = load_and_process_combined_df()  # Dynamically load or preprocess your DataFrame
+
+        # Generate the plot using the function
+        fig = generate_feature_plot(combined_df, selected_country, selected_feature, allowed_features)
+        return fig
+
+    except ValueError as e:
+        # Return an empty figure with an error message
+        return {
+            'data': [],
+            'layout': {
+                'title': f"Error: {str(e)}",
+                'xaxis': {'visible': False},
+                'yaxis': {'visible': False}
+            }
+        }
+
 
 
 # -------------- Callback for Model Performance -------------------------
@@ -185,6 +347,8 @@ def generate_and_save_results(n_clicks):
 )
 def update_model_predictions(selected_country, selected_model):
     global results
+
+    
 
     # Check if results are loaded
     if results is None:
@@ -257,14 +421,19 @@ def update_model_predictions(selected_country, selected_model):
         #     print(f"Moving Average Metrics: {results['country_metrics'][selected_country]['Moving Average']}")  # Debugging statement
 
         # Align indices for actual values and predictions
-        if hasattr(actual_values, "index") and hasattr(predictions, "index"):
-            actual_values = actual_values.reindex(predictions.index).dropna()
-            predictions = predictions.loc[actual_values.index]
-        elif len(actual_values) != len(predictions):
-            # Fallback to range index if lengths differ
-            actual_values = pd.Series(actual_values).reset_index(drop=True)
-            predictions = pd.Series(predictions).reset_index(drop=True)
+        print("PREDICTION VALUES BEFORE", predictions)
+        print("ACTUALS VALUES BEFORE", actual_values)
 
+        # if hasattr(actual_values, "index") and hasattr(predictions, "index"):
+        #     actual_values = actual_values.reindex(predictions.index).dropna()
+        #     predictions = predictions.loc[actual_values.index].reset_index(drop=True)
+
+        # elif len(actual_values) != len(predictions):
+        #     # Fallback to range index if lengths differ
+        #     actual_values = pd.Series(actual_values).reset_index(drop=True)
+        #     predictions = pd.Series(predictions).reset_index(drop=True)
+        print("PREDICTION VALUES AFTER", predictions)
+        print("ACTUALS VALUES AFTER", actual_values)
         # # Align indices for actual values and predictions
         # if hasattr(actual_values, "index") and hasattr(predictions, "index"):
         #     # Align actual_values and predictions by their shared indices
@@ -275,23 +444,24 @@ def update_model_predictions(selected_country, selected_model):
         #     # Warn about mismatched lengths
         #     print("Warning: Actual values and predictions have mismatched lengths.")
         #     return html.Div("Error: Mismatched lengths between actual values and predictions.", style={"color": "red"})
-
+        #print("ACTUAL VALUES LIST", list(actual_values.values))
+        #print("PREDICTION VALUES LIST", predictions.tolist())
         # Add actual values to the plot
         date_range = pd.date_range(start=start_date, end=end_date, freq='QS')
         if actual_values is not None and len(actual_values) > 0:
             fig.add_trace(go.Scatter(
                 x=date_range, #actual_values.index if hasattr(actual_values, 'index') else list(range(len(actual_values))),
-                y=actual_values.values if hasattr(actual_values, 'values') else actual_values,
+                y=list(actual_values.values) if hasattr(actual_values, 'values') else actual_values,
                 mode='lines',
                 name='Actual',
-                line=dict(dash='dot')
+                #line=dict(dash='dot')
             ))
 
         # Add model predictions to the plot
         if predictions is not None and len(predictions) > 0:
             fig.add_trace(go.Scatter(
                 x=date_range, #predictions.index if hasattr(predictions, 'index') else list(range(len(predictions))),
-                y=predictions.values if hasattr(predictions, 'values') else predictions,
+                y=predictions.tolist(),
                 mode='lines',
                 name=f'{selected_model}'
             ))
@@ -309,7 +479,7 @@ def update_model_predictions(selected_country, selected_model):
         showgrid=False,  # Disable x-axis grid
         showline=True,   # Show x-axis line
         linecolor='black',  # Black color for the axis line
-        linewidth=0.5       # Narrow x-axis line
+        linewidth=1       # Narrow x-axis line
     ),
     yaxis=dict(
         showgrid=False,  # Disable y-axis grid
@@ -342,13 +512,13 @@ def download_table(n_clicks):
     
     # Extract best models as a DataFrame
     best_models = results.get("best_models", {})
-    predictions = results.get("ml_predictions", {}).get("all_countries_predictions", {})  # check the dictionary
+    predictions = results.get("backtesting_results", {}).get("predictions", {})  # check the dictionary
     # Combine the data
     data = [
         {
             "Country": country,
             "Best Fit Model for Life LOB Data": model_info["model"],
-            "Prediction Values": ", ".join(map(str, predictions.get(model_info["model"], [])))  # Format predictions as a comma-separated string
+            "Prediction Values": ", ".join(map(str, predictions.get(model_info["predictions"], [])))  # Format predictions as a comma-separated string
         }
         for country, model_info in best_models.items()
     ]
