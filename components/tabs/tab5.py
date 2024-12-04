@@ -12,14 +12,14 @@ def generate_best_model_table(results):
         html.Div: Dash HTML layout containing the table and download button.
     """
     best_models = results.get("best_models", {})
-    predictions = results.get("ml_predictions", {}).get("all_countries_predictions", {}) # check dictionary
-    
+    predictions = results.get("backtesting_results", {}).get("predictions", {}) 
+    print("DISPLAY IN TAB", results.get("backtesting_results", {}).get("Sweden", {}).get("predictions", {}).get(best_models["Sweden"]["model"], []))
     # Prepare the data for the table
     data = [
         {
             "Country": country,
             "Best Fit Model": model_info["model"],
-            "Prediction Values": ", ".join(map(str, predictions.get(model_info["model"], [])))  # Format predictions as a comma-separated string
+            "Prediction Values": ", ".join(map(str, results.get(model_info["country"], {}).get(model_info["predictions"], {}).get(model_info["model"], [])))  # Format predictions as a comma-separated string
         }
         for country, model_info in best_models.items()
     ]

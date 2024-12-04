@@ -513,12 +513,13 @@ def download_table(n_clicks):
     # Extract best models as a DataFrame
     best_models = results.get("best_models", {})
     predictions = results.get("backtesting_results", {}).get("predictions", {})  # check the dictionary
+    print("DISPLAY", predictions)
     # Combine the data
     data = [
         {
             "Country": country,
             "Best Fit Model for Life LOB Data": model_info["model"],
-            "Prediction Values": ", ".join(map(str, predictions.get(model_info["predictions"], [])))  # Format predictions as a comma-separated string
+            "Prediction Values": ", ".join(map(str, results.get(model_info["country"], {}).get(model_info["predictions"], {}).get(model_info["model"], [])))  # Format predictions as a comma-separated string
         }
         for country, model_info in best_models.items()
     ]

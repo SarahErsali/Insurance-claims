@@ -893,7 +893,7 @@ def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_cons
     for country, country_data in backtesting_results.items():
         #print(f"\nSelecting the best model for {country}...")
         model_scores = {}
-
+        print("WHAT IS IN THRE", country_data['predictions'])
         # Access the 'metrics' dictionary for the country
         models = country_data["metrics"]
 
@@ -943,6 +943,7 @@ def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_cons
 
         # Select the model with the highest score
         best_model = max(model_scores, key=model_scores.get)
+        
         #------------------------------------------
         predictions = country_data['predictions'][best_model]
     
