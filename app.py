@@ -237,7 +237,7 @@ def generate_feature_plot(combined_df, country, feature, allowed_features=None):
     fig.add_trace(go.Scatter(
         x=country_data['Date'],
         y=country_data[feature],
-        mode='lines',
+        mode='lines+markers',
         name=feature,
         line=dict(color=feature_color)
     ))
@@ -339,23 +339,22 @@ def update_plot(selected_country, selected_feature):
 
 # -------------- Callback for Model Performance -------------------------
 
-
 @app.callback(
-    Output('model-comparison-graph', 'figure'),
-    Input('tab3-country-dropdown', 'value'),
-    Input('tab3-model-dropdown', 'value'),
+    [Output('model-comparison-graph', 'figure'),
+     Output('metrics-bar-chart', 'figure')],
+    [Input('tab3-country-dropdown', 'value'),
+     Input('tab3-model-dropdown', 'value')]
 )
 def update_model_predictions(selected_country, selected_model):
     global results
-
-    
 
     # Check if results are loaded
     if results is None:
         raise ValueError("Results have not been generated or loaded. Please ensure results.pkl exists or generate the results.")
 
-    # Create a Plotly figure
-    fig = go.Figure()
+    # Create figures
+    prediction_fig = go.Figure()
+    metrics_fig = go.Figure()
 
     try:
         # Debugging: Log selected inputs
@@ -381,118 +380,243 @@ def update_model_predictions(selected_country, selected_model):
 
         print(f"Parsed Model Name: {model_name}, Dataset: {dataset}")
 
-        # Handle "All Countries" option
-        if selected_country == 'All Countries':
-            
-            # For default ML models, fetch actuals from results['ml_predictions']
-            if model_name in ['Default XGBoost', 'Default LightGBM']:
-                predictions = results['predictions'][f'{dataset}_predictions'][model_name]
-                actual_values = results['actuals'][f'{dataset}_actuals'][model_name]
-            else:
-                # For retrained ML models, ARIMA, and Moving Average, fetch actuals differently
-                predictions = results['predictions'][f'{dataset}_predictions'][model_name]
-                actual_values = results['actuals'][f'{dataset}_actuals'][model_name]
+        # Get country-specific data
+        country_metrics = results['country_metrics'].get(selected_country, {})
+        model_metrics = country_metrics.get(model_name, {})
 
-        else:
-            # Get country-specific data
-            country_metrics = results['country_metrics'].get(selected_country, {})
-            print(f"Country Metrics for {selected_country}: {list(country_metrics.keys())}")  # Debugging statement
-
-            model_metrics = country_metrics.get(model_name, {})
-            print(f"Model Metrics for {model_name}: {list(model_metrics.keys())}")  # Debugging statement
-
-            actual_values = model_metrics.get(f'{dataset}_actuals', None)
-            predictions = model_metrics.get(f'{dataset}_predictions', None)
-
-        # Debugging: Check retrieved values
-        print(f"Actual Values: {actual_values}")
-        print(f"Predictions: {predictions}")
-
-        
-
-        # # Raise an error if both predictions and actual values are missing
-        # if predictions is None and actual_values is None:
-        #     raise KeyError(f"No data found for {selected_country}, {selected_model}.")
-
-        # # Specific debugging for ARIMA and Moving Average
-        # if model_name == 'ARIMA':
-        #     print(f"ARIMA Metrics: {results['country_metrics'][selected_country]['ARIMA']}")  # Debugging statement
-        # elif model_name == 'Moving Average':
-        #     print(f"Moving Average Metrics: {results['country_metrics'][selected_country]['Moving Average']}")  # Debugging statement
-
-        # Align indices for actual values and predictions
-        print("PREDICTION VALUES BEFORE", predictions)
-        print("ACTUALS VALUES BEFORE", actual_values)
-
-        # if hasattr(actual_values, "index") and hasattr(predictions, "index"):
-        #     actual_values = actual_values.reindex(predictions.index).dropna()
-        #     predictions = predictions.loc[actual_values.index].reset_index(drop=True)
-
-        # elif len(actual_values) != len(predictions):
-        #     # Fallback to range index if lengths differ
-        #     actual_values = pd.Series(actual_values).reset_index(drop=True)
-        #     predictions = pd.Series(predictions).reset_index(drop=True)
-        print("PREDICTION VALUES AFTER", predictions)
-        print("ACTUALS VALUES AFTER", actual_values)
-        # # Align indices for actual values and predictions
-        # if hasattr(actual_values, "index") and hasattr(predictions, "index"):
-        #     # Align actual_values and predictions by their shared indices
-        #     aligned_indices = actual_values.index.intersection(predictions.index)
-        #     actual_values = actual_values.loc[aligned_indices]
-        #     predictions = predictions.loc[aligned_indices]
-        # elif len(actual_values) != len(predictions):
-        #     # Warn about mismatched lengths
-        #     print("Warning: Actual values and predictions have mismatched lengths.")
-        #     return html.Div("Error: Mismatched lengths between actual values and predictions.", style={"color": "red"})
-        #print("ACTUAL VALUES LIST", list(actual_values.values))
-        #print("PREDICTION VALUES LIST", predictions.tolist())
-        # Add actual values to the plot
+        # Extract predictions and actual values
+        actual_values = model_metrics.get(f'{dataset}_actuals', None)
+        predictions = model_metrics.get(f'{dataset}_predictions', None)
         date_range = pd.date_range(start=start_date, end=end_date, freq='QS')
+
+        # Populate the prediction figure
         if actual_values is not None and len(actual_values) > 0:
-            fig.add_trace(go.Scatter(
-                x=date_range, #actual_values.index if hasattr(actual_values, 'index') else list(range(len(actual_values))),
+            prediction_fig.add_trace(go.Scatter(
+                x=date_range,
                 y=list(actual_values.values) if hasattr(actual_values, 'values') else actual_values,
                 mode='lines',
-                name='Actual',
-                #line=dict(dash='dot')
+                name='Actual'
             ))
 
-        # Add model predictions to the plot
         if predictions is not None and len(predictions) > 0:
-            fig.add_trace(go.Scatter(
-                x=date_range, #predictions.index if hasattr(predictions, 'index') else list(range(len(predictions))),
+            prediction_fig.add_trace(go.Scatter(
+                x=date_range,
                 y=predictions.tolist(),
                 mode='lines',
                 name=f'{selected_model}'
             ))
 
+        # Extract metrics (accuracy, bias, MAPE)
+        metrics_data = country_metrics.get(model_name, {}).get('metrics', {})
+
+        # Determine the dataset type (validation or blind_test) based on the model
+        if 'Validation' in selected_model:
+            dataset_type = 'validation'
+        else:
+            dataset_type = 'blind_test'
+
+        # Safely retrieve metrics for the selected dataset
+        dataset_metrics = metrics_data.get(dataset_type, {})
+        if dataset_metrics:
+            # Extract individual metrics
+            accuracy = dataset_metrics.get('Accuracy%', 0)
+            bias = dataset_metrics.get('Bias%', 0)
+            mape = dataset_metrics.get('MAPE%', 0)
+
+            # Add a bar chart trace with these metrics
+            metrics_fig.add_trace(go.Bar(
+                x=['Accuracy', 'Bias', 'MAPE'],  # Metric names
+                y=[accuracy, bias, mape],       # Metric values
+                name=f"{selected_model} Metrics",
+                marker=dict(color=['#636EFA', '#EF553B', '#00CC96'])  # Different colors for each metric
+            ))
+        else:
+            print(f"No metrics found for {model_name} in {dataset_type}.")
+
+        
+
+        # Update the layout of the figures
+        prediction_fig.update_layout(
+            title=f"{selected_model} Prediction Values vs Actual Values for {selected_country}",
+            xaxis_title="Date",
+            yaxis_title="NET Claims Incurred",
+            legend_title="Legend",
+            xaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
+            yaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
+            paper_bgcolor='white',
+            plot_bgcolor='white'
+        )
+
+        metrics_fig.update_layout(
+            title=f"Performance Metrics of {selected_model} for {selected_country}",
+            #xaxis_title="Metrics",
+            yaxis_title="Value (%)",
+            # xaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
+            # yaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
+            barmode='group',
+            showlegend=False,
+            paper_bgcolor='white',
+            plot_bgcolor='white'
+        )
+
     except KeyError as e:
         raise ValueError(f"Error accessing data for {selected_country}, {selected_model}: {e}")
 
-    # Update the layout of the figure
-    fig.update_layout(
-    title=f"{selected_model} vs Actual for {selected_country}",
-    xaxis_title="Date",
-    yaxis_title="NET Claims Incurred",
-    legend_title="Legend",
-    xaxis=dict(
-        showgrid=False,  # Disable x-axis grid
-        showline=True,   # Show x-axis line
-        linecolor='black',  # Black color for the axis line
-        linewidth=1       # Narrow x-axis line
-    ),
-    yaxis=dict(
-        showgrid=False,  # Disable y-axis grid
-        showline=True,   # Show y-axis line
-        linecolor='black',  # Black color for the axis line
-        linewidth=1       # Narrow y-axis line
-    ),
-    paper_bgcolor='white',  # Background of the entire plot area
-    plot_bgcolor='white'    # Background of the graph itself
-)
+    return prediction_fig, metrics_fig
+
+# @app.callback(
+#     Output('model-comparison-graph', 'figure'),
+#     Input('tab3-country-dropdown', 'value'),
+#     Input('tab3-model-dropdown', 'value'),
+# )
+# def update_model_predictions(selected_country, selected_model):
+#     global results
+
+    
+
+#     # Check if results are loaded
+#     if results is None:
+#         raise ValueError("Results have not been generated or loaded. Please ensure results.pkl exists or generate the results.")
+
+#     # Create a Plotly figure
+#     fig = go.Figure()
+
+#     try:
+#         # Debugging: Log selected inputs
+#         print(f"Selected Country: {selected_country}")
+#         print(f"Selected Model: {selected_model}")
+
+#         # Parse selected_model to extract the model and dataset
+#         if 'Validation' in selected_model:
+#             dataset = 'validation'
+#             model_name = selected_model.replace(' Validation', '')
+#             start_date = "2022-01-01"
+#             end_date = "2023-03-31"
+#         elif 'Blind Test' in selected_model:
+#             dataset = 'blind_test'
+#             model_name = selected_model.replace(' Blind Test', '')
+#             start_date = "2023-04-01"
+#             end_date = "2024-03-31"
+#         else:
+#             dataset = 'blind_test'
+#             model_name = selected_model  # For ARIMA and Moving Average
+#             start_date = "2023-04-01"
+#             end_date = "2024-03-31"
+
+#         print(f"Parsed Model Name: {model_name}, Dataset: {dataset}")
+
+#         # Handle "All Countries" option
+#         if selected_country == 'All Countries':
+            
+#             # For default ML models, fetch actuals from results['ml_predictions']
+#             if model_name in ['Default XGBoost', 'Default LightGBM']:
+#                 predictions = results['predictions'][f'{dataset}_predictions'][model_name]
+#                 actual_values = results['actuals'][f'{dataset}_actuals'][model_name]
+#             else:
+#                 # For retrained ML models, ARIMA, and Moving Average, fetch actuals differently
+#                 predictions = results['predictions'][f'{dataset}_predictions'][model_name]
+#                 actual_values = results['actuals'][f'{dataset}_actuals'][model_name]
+
+#         else:
+#             # Get country-specific data
+#             country_metrics = results['country_metrics'].get(selected_country, {})
+#             print(f"Country Metrics for {selected_country}: {list(country_metrics.keys())}")  
+
+#             model_metrics = country_metrics.get(model_name, {})
+#             print(f"Model Metrics for {model_name}: {list(model_metrics.keys())}")  
+
+#             actual_values = model_metrics.get(f'{dataset}_actuals', None)
+#             predictions = model_metrics.get(f'{dataset}_predictions', None)
+
+        
+#         print(f"Actual Values: {actual_values}")
+#         print(f"Predictions: {predictions}")
+
+        
+
+#         # # Raise an error if both predictions and actual values are missing
+#         # if predictions is None and actual_values is None:
+#         #     raise KeyError(f"No data found for {selected_country}, {selected_model}.")
+
+#         # # Specific debugging for ARIMA and Moving Average
+#         # if model_name == 'ARIMA':
+#         #     print(f"ARIMA Metrics: {results['country_metrics'][selected_country]['ARIMA']}")  # Debugging statement
+#         # elif model_name == 'Moving Average':
+#         #     print(f"Moving Average Metrics: {results['country_metrics'][selected_country]['Moving Average']}")  # Debugging statement
+
+#         # Align indices for actual values and predictions
+#         print("PREDICTION VALUES BEFORE", predictions)
+#         print("ACTUALS VALUES BEFORE", actual_values)
+
+#         # if hasattr(actual_values, "index") and hasattr(predictions, "index"):
+#         #     actual_values = actual_values.reindex(predictions.index).dropna()
+#         #     predictions = predictions.loc[actual_values.index].reset_index(drop=True)
+
+#         # elif len(actual_values) != len(predictions):
+#         #     # Fallback to range index if lengths differ
+#         #     actual_values = pd.Series(actual_values).reset_index(drop=True)
+#         #     predictions = pd.Series(predictions).reset_index(drop=True)
+#         print("PREDICTION VALUES AFTER", predictions)
+#         print("ACTUALS VALUES AFTER", actual_values)
+#         # # Align indices for actual values and predictions
+#         # if hasattr(actual_values, "index") and hasattr(predictions, "index"):
+#         #     # Align actual_values and predictions by their shared indices
+#         #     aligned_indices = actual_values.index.intersection(predictions.index)
+#         #     actual_values = actual_values.loc[aligned_indices]
+#         #     predictions = predictions.loc[aligned_indices]
+#         # elif len(actual_values) != len(predictions):
+#         #     # Warn about mismatched lengths
+#         #     print("Warning: Actual values and predictions have mismatched lengths.")
+#         #     return html.Div("Error: Mismatched lengths between actual values and predictions.", style={"color": "red"})
+#         #print("ACTUAL VALUES LIST", list(actual_values.values))
+#         #print("PREDICTION VALUES LIST", predictions.tolist())
+#         # Add actual values to the plot
+#         date_range = pd.date_range(start=start_date, end=end_date, freq='QS')
+#         if actual_values is not None and len(actual_values) > 0:
+#             fig.add_trace(go.Scatter(
+#                 x=date_range, #actual_values.index if hasattr(actual_values, 'index') else list(range(len(actual_values))),
+#                 y=list(actual_values.values) if hasattr(actual_values, 'values') else actual_values,
+#                 mode='lines',
+#                 name='Actual',
+#                 #line=dict(dash='dot')
+#             ))
+
+#         # Add model predictions to the plot
+#         if predictions is not None and len(predictions) > 0:
+#             fig.add_trace(go.Scatter(
+#                 x=date_range, #predictions.index if hasattr(predictions, 'index') else list(range(len(predictions))),
+#                 y=predictions.tolist(),
+#                 mode='lines',
+#                 name=f'{selected_model}'
+#             ))
+
+#     except KeyError as e:
+#         raise ValueError(f"Error accessing data for {selected_country}, {selected_model}: {e}")
+
+#     # Update the layout of the figure
+#     fig.update_layout(
+#     title=f"{selected_model} Prediction Values vs Actual Values for {selected_country}",
+#     xaxis_title="Date",
+#     yaxis_title="NET Claims Incurred",
+#     legend_title="Legend",
+#     xaxis=dict(
+#         showgrid=False,  # Disable x-axis grid
+#         showline=True,   # Show x-axis line
+#         linecolor='black',  # Black color for the axis line
+#         linewidth=1       # Narrow x-axis line
+#     ),
+#     yaxis=dict(
+#         showgrid=False,  # Disable y-axis grid
+#         showline=True,   # Show y-axis line
+#         linecolor='black',  # Black color for the axis line
+#         linewidth=1       # Narrow y-axis line
+#     ),
+#     paper_bgcolor='white',  # Background of the entire plot area
+#     plot_bgcolor='white'    # Background of the graph itself
+# )
 
 
-    return fig
+#     return fig
 
 
 
@@ -533,8 +657,10 @@ def download_table(n_clicks):
 # -------------- Callback for Back Testing -------------------------
 
 @app.callback(
-    [Output("accuracy-chart-container", "children"),
-     Output("bias-chart-container", "children")],
+    [Output("accuracy-chart", "figure"),
+     Output("bias-chart", "figure")],
+    # [Output("accuracy-chart-container", "children"),
+    #  Output("bias-chart-container", "children")],
     [Input("country-dropdown", "value"),
      Input("model-dropdown", "value")]
 )
@@ -561,6 +687,83 @@ def update_backtesting_charts(selected_country, selected_model):
         no_data_msg = html.Div(f"No data available for {selected_country} and {selected_model}.", style={"color": "red"})
         return no_data_msg, no_data_msg
 
+    # # Transforming the dictionary into accuracy and bias data
+    # accuracy_based_dict = {}
+    # bias_based_dict = {}
+
+    # try:
+    #     for cycle, details in model_data.items():
+    #         for metric in details['metrics']:
+    #             lag = metric['lag']
+    #             accuracy = metric['accuracy']
+    #             bias = metric['bias']
+    #             lag_key = f"Lag {lag}"
+                
+    #             # Update accuracy-based dictionary
+    #             if lag_key not in accuracy_based_dict:
+    #                 accuracy_based_dict[lag_key] = {}
+    #             accuracy_based_dict[lag_key][cycle] = accuracy
+
+    #             # Update bias-based dictionary
+    #             if lag_key not in bias_based_dict:
+    #                 bias_based_dict[lag_key] = {}
+    #             bias_based_dict[lag_key][cycle] = bias
+    # except Exception as e:
+    #     print(f"Error processing data for plotting: {e}")
+    #     error_msg = html.Div("Error processing data. Please check your dataset.", style={"color": "red"})
+    #     return error_msg, error_msg
+    
+    # # Chart 1: Accuracy per Lag
+    # fig_accuracy = go.Figure()
+    # for lag, cycles in accuracy_based_dict.items():
+    #     try:
+    #         fig_accuracy.add_trace(go.Bar(
+    #             x=list(cycles.keys()),
+    #             y=list(cycles.values()),
+    #             name=lag
+    #         ))
+    #     except Exception as e:
+    #         print(f"Error plotting accuracy for {lag}: {e}")
+
+    # fig_accuracy.update_layout(
+    #     title=f"Accuracy per Lag per Cycle for {selected_model} in {selected_country}",
+    #     barmode='group',
+    #     yaxis_title="Value (%)",
+    #     legend_title="Lag",
+    #     height=500,
+    #     width=800,
+    #     xaxis=dict(showgrid=False),
+    #     yaxis=dict(showgrid=False),
+    #     plot_bgcolor="white",
+    #     showlegend=True
+    # )
+
+    # # Chart 2: Bias per Lag
+    # fig_bias = go.Figure()
+    # for lag, cycles in bias_based_dict.items():
+    #     try:
+    #         fig_bias.add_trace(go.Bar(
+    #             x=list(cycles.keys()),
+    #             y=list(cycles.values()),
+    #             name=lag
+    #         ))
+    #     except Exception as e:
+    #         print(f"Error plotting bias for {lag}: {e}")
+
+    # fig_bias.update_layout(
+    #     title=f"Bias per Lag per Cycle for {selected_model} in {selected_country}",
+    #     barmode='group',
+    #     yaxis_title="Value (%)",
+    #     legend_title="Lag",
+    #     height=500,
+    #     width=800,
+    #     xaxis=dict(showgrid=False),
+    #     yaxis=dict(showgrid=False),
+    #     plot_bgcolor="white",
+    #     showlegend=True
+    # )
+
+    
     # Transforming the dictionary
     accuracy_based_dict = {}
 
@@ -586,8 +789,8 @@ def update_backtesting_charts(selected_country, selected_model):
                 bias_based_dict[lag_key] = {}
             bias_based_dict[lag_key][cycle] = bias
 
-    #print("testing bias", bias_based_dict)
-    #print("testing type", type(accuracy_based_dict.values()))
+    print("testing bias", bias_based_dict)
+    print("testing type", type(accuracy_based_dict.values()))
 
     # Chart 1: Metrics across cycles
     fig_accuracy = go.Figure()
@@ -597,7 +800,9 @@ def update_backtesting_charts(selected_country, selected_model):
             fig_accuracy.add_trace(go.Bar(
                 x=list(accuracy_based_dict[lag].keys()),
                 y=y_values,
-                name= f"Lag {lag}" #lag
+                name= f"Lag {lag}", #lag
+                marker=dict(line=dict(width=1)),  # Adjust the outline of the bar
+                width=0.08  # Set the bar width (lower values narrow the bar)
             ))
             print(f"Y-axis values for {lag}: {y_values}")
         except Exception as e:
@@ -608,11 +813,12 @@ def update_backtesting_charts(selected_country, selected_model):
     fig_accuracy.update_layout(
         title=f"Accuracy per Lag per Cycle for {selected_model} in {selected_country}",
         barmode='group',
-        yaxis_title="Value (%)",
+        bargap=0.1,       # Reduce the space between bars
+        yaxis_title="Accuracy (%)",
         legend_title="Metrics",
         height=500,
         width=800,
-        xaxis=dict(showgrid=False),
+        xaxis=dict(showgrid=False, showline=True),
         yaxis=dict(showgrid=False),
         plot_bgcolor="white",
         showlegend=True
@@ -627,29 +833,34 @@ def update_backtesting_charts(selected_country, selected_model):
             fig_bias.add_trace(go.Bar(
                 x= list(bias_based_dict[lag].keys()),
                 y=y_values,
-                name= f"Lag {lag}" #lag
+                name= f"Lag {lag}", #lag
+                marker=dict(line=dict(width=1)),  # Adjust the outline of the bar
+                width=0.08  # Set the bar width (lower values narrow the bar)
             ))
             print(f"Lag-based Y-values for {lag}: {y_values}")
     except Exception as e:
         print(f"Error plotting lags: {e}")
 
-    
+    #print(f"X-Axis: {list(bias_based_dict.keys())}")
+    #print(f"Y-Axis: {list(bias_based_dict.values())}")
 
     fig_bias.update_layout(
         title=f"Bias per Lag per Cycle for {selected_model} in {selected_country}",
         barmode='group',
-        yaxis_title="Value (%)",
+        bargap=0.1,       # Reduce the space between bars
+        yaxis_title="Bias (%)",
         legend_title="Metrics",
         height=500,
         width=800,
-        xaxis=dict(showgrid=False),
+        xaxis=dict(showgrid=False, showline=True),
         yaxis=dict(showgrid=False),
         plot_bgcolor="white",
         showlegend=True
     )
-
+    print(f"Returning: {fig_accuracy}, {fig_bias}")
     # Return both figures
-    return dcc.Graph(figure=fig_accuracy), dcc.Graph(figure=fig_bias)
+    #return dcc.Graph(figure=fig_accuracy), dcc.Graph(figure=fig_bias)
+    return fig_accuracy, fig_bias
 
 # @app.callback(
 #     Output("backtesting-chart-container", "children"),

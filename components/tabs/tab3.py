@@ -43,12 +43,12 @@ def render_tab3():
                                 style={
                                     'width': '300px',
                                     'marginBottom': '20px',
-                                    'fontSize': '14px',  # Adjust font size for consistency
-                                    'padding': '8px',  # Add padding for dropdown
+                                    'fontSize': '14px',
+                                    'padding': '8px',
                                 }
                             ),
                         ],
-                        style={'textAlign': 'left'}  # Ensure left alignment for the container
+                        style={'textAlign': 'left'}
                     ),
 
                     # Dropdown for model and dataset selection
@@ -70,42 +70,51 @@ def render_tab3():
                                     {'label': 'ARIMA (Blind Test)', 'value': 'ARIMA'},
                                     {'label': 'Moving Average (Blind Test)', 'value': 'Moving Average'}
                                 ],
-                                value='Default XGBoost Validation',  # Default selection
+                                value='Default XGBoost Validation',
                                 style={
                                     'width': '300px',
-                                    'fontSize': '14px',  # Adjust font size for consistency
-                                    'padding': '8px',  # Add padding for dropdown
+                                    'fontSize': '14px',
+                                    'padding': '8px',
                                 }
                             ),
                         ],
-                        style={'textAlign': 'left'}  # Ensure left alignment for the container
+                        style={'textAlign': 'left'}
                     ),
                 ],
                 style={
-                    'width': '25%',  # Adjust width of dropdown container
+                    'width': '25%',
                     'padding': '20px',
-                    'boxShadow': '0 0 10px rgba(0,0,0,0.1)',  # Add light shadow for dropdown container
+                    'boxShadow': '0 0 10px rgba(0,0,0,0.1)',
                     'display': 'flex',
                     'flexDirection': 'column',
-                    'alignItems': 'flex-start',  # Align everything to the left
-                    'backgroundColor': 'white',  # Ensure white background for the dropdown section
-                    'borderRadius': '10px',  # Optional: Rounded corners for dropdown container
-                    'marginRight': '20px',  # Add spacing between dropdown and graph
+                    'alignItems': 'flex-start',
+                    'backgroundColor': 'white',
+                    'borderRadius': '10px',
+                    'marginRight': '20px',
+                    'height': '95vh',  # Increased height to fit both plots
                 }
             ),
 
             # Graph container (right side)
             html.Div(
-                dcc.Graph(
-                    id='model-comparison-graph',
-                    config={'displayModeBar': True},  # Display Plotly toolbar
-                ),
+                [
+                    dcc.Graph(
+                        id='model-comparison-graph',
+                        config={'displayModeBar': True}
+                    ),
+                    html.Div(
+                        dcc.Graph(id='metrics-bar-chart'),
+                        style={'marginTop': '20px'}
+                    )
+                ],
                 style={
-                    'width': '75%',  # Further increased width of the graph
+                    'width': '75%',
                     'padding': '20px',
-                    'backgroundColor': 'white',  # White background for the graph
-                    'borderRadius': '10px',  # Optional: Rounded corners for better aesthetics
-                    'boxShadow': '0 0 10px rgba(0, 0, 0, 0.1)',  # Add shadow for the graph container
+                    'backgroundColor': 'white',
+                    'borderRadius': '10px',
+                    'boxShadow': '0 0 10px rgba(0, 0, 0, 0.1)',
+                    'height': '95vh',  # Increased height to fit both plots
+                    'overflowY': 'auto',  # Enable vertical scrolling if necessary
                 }
             ),
         ],
@@ -113,13 +122,21 @@ def render_tab3():
             'display': 'flex',
             'flexDirection': 'row',
             'height': '100vh',
-            'backgroundColor': 'white',  # Set entire page background to white
-            'padding': '20px',  # Add padding around the entire layout
+            'backgroundColor': 'white',
+            'padding': '20px',
         }
     )
 
-
 # def render_tab3():
+#     """
+#     Render the layout for Tab 3, allowing users to select a country and model to view comparison graphs.
+#     """
+#     # Extract the list of countries from results
+#     countries = list(results.get('country_metrics', {}).keys()) if results else []
+    
+#     # Set the default country to the first one in the list
+#     default_country = countries[0] if countries else None
+
 #     return html.Div(
 #         [
 #             # Container for dropdowns (left side)
@@ -134,13 +151,8 @@ def render_tab3():
 #                             ),
 #                             dcc.Dropdown(
 #                                 id='tab3-country-dropdown',
-#                                 options=[
-#                                     {'label': 'All Countries', 'value': 'All Countries'}
-#                                 ] + (
-#                                     [{'label': country, 'value': country} for country in results.get('country_metrics', {}).keys()]
-#                                     if results else []
-#                                 ),
-#                                 value='All Countries',  # Default selection
+#                                 options=[{'label': country, 'value': country} for country in countries],
+#                                 value=default_country,  # Set the first country as the default
 #                                 style={
 #                                     'width': '300px',
 #                                     'marginBottom': '20px',
@@ -151,6 +163,7 @@ def render_tab3():
 #                         ],
 #                         style={'textAlign': 'left'}  # Ensure left alignment for the container
 #                     ),
+
 #                     # Dropdown for model and dataset selection
 #                     html.Div(
 #                         [
