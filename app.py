@@ -794,30 +794,31 @@ def update_backtesting_charts(selected_country, selected_model):
 
     # Chart 1: Metrics across cycles
     fig_accuracy = go.Figure()
-    for lag in accuracy_based_dict.keys():
+    for cycle in accuracy_based_dict["lag 1"].keys():
         try:
-            y_values = list(accuracy_based_dict[lag].values())
+            y_values = [accuracy_based_dict[lag][cycle] for lag in accuracy_based_dict.keys()] #list(accuracy_based_dict[lag].values())
             fig_accuracy.add_trace(go.Bar(
-                x=list(accuracy_based_dict[lag].keys()),
+                x=list(accuracy_based_dict.keys()),
                 y=y_values,
-                name= f"Lag {lag}", #lag
+                name= f"{cycle.capitalize()}", 
                 marker=dict(line=dict(width=1)),  # Adjust the outline of the bar
-                width=0.08  # Set the bar width (lower values narrow the bar)
+                width=0.2  # Set the bar width 
             ))
-            print(f"Y-axis values for {lag}: {y_values}")
+            print(f"Y-axis values for {cycle}: {y_values}")
         except Exception as e:
-            print(f"Error plotting metric {lag}: {e}")
+            print(f"Error plotting metric {cycle}: {e}")
 
     
 
     fig_accuracy.update_layout(
         title=f"Accuracy per Lag per Cycle for {selected_model} in {selected_country}",
         barmode='group',
-        bargap=0.1,       # Reduce the space between bars
+        bargap=0.4,       # space between bar groups (subplots)
+        bargroupgap=0.1,  # space between bars within the same group
         yaxis_title="Accuracy (%)",
-        legend_title="Metrics",
+        #legend_title="Metrics",
         height=500,
-        width=800,
+        width=1000,
         xaxis=dict(showgrid=False, showline=True),
         yaxis=dict(showgrid=False),
         plot_bgcolor="white",
@@ -828,16 +829,16 @@ def update_backtesting_charts(selected_country, selected_model):
     fig_bias = go.Figure()
     try:
         
-        for lag in bias_based_dict.keys():
-            y_values = list(bias_based_dict[lag].values())
+        for cycle in bias_based_dict["lag 1"].keys():
+            y_values = [bias_based_dict[lag][cycle] for lag in bias_based_dict.keys()]
             fig_bias.add_trace(go.Bar(
-                x= list(bias_based_dict[lag].keys()),
+                x= list(bias_based_dict.keys()),
                 y=y_values,
-                name= f"Lag {lag}", #lag
+                name= f"{cycle.capitalize()}", 
                 marker=dict(line=dict(width=1)),  # Adjust the outline of the bar
-                width=0.08  # Set the bar width (lower values narrow the bar)
+                width=0.2  # Set the bar width 
             ))
-            print(f"Lag-based Y-values for {lag}: {y_values}")
+            print(f"Lag-based Y-values for {cycle}: {y_values}")
     except Exception as e:
         print(f"Error plotting lags: {e}")
 
@@ -847,11 +848,12 @@ def update_backtesting_charts(selected_country, selected_model):
     fig_bias.update_layout(
         title=f"Bias per Lag per Cycle for {selected_model} in {selected_country}",
         barmode='group',
-        bargap=0.1,       # Reduce the space between bars
+        bargap=0.4,       # space between bar groups (subplots)
+        bargroupgap=0.1,  # space between bars within the same group
         yaxis_title="Bias (%)",
-        legend_title="Metrics",
+        #legend_title="Metrics",
         height=500,
-        width=800,
+        width=1000,
         xaxis=dict(showgrid=False, showline=True),
         yaxis=dict(showgrid=False),
         plot_bgcolor="white",
