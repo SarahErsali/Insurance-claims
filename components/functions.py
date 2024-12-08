@@ -72,7 +72,7 @@ def train_and_evaluate_model(model, X_train, y_train, X_val, y_val, X_blind_test
     model.fit(X_train, y_train)
 
     val_preds = model.predict(X_val)
-    print(f"---SINGLE {model}: {val_preds[:5]}")
+    #print(f"---SINGLE {model}: {val_preds[:5]}")
     metrics = {
         'validation': {
             'MAPE%': mean_absolute_percentage_error(y_val, val_preds) * 100,
@@ -163,7 +163,7 @@ def retrain_and_evaluate(model_class, best_params, X_combined, y_combined, X_bli
     model = model_class(**best_params, random_state=42)
     model.fit(X_combined, y_combined)
     test_preds = model.predict(X_blind_test)
-    print(f"SINGLE predictions for model {model_class}: {test_preds[:5]}")
+    #print(f"SINGLE predictions for model {model_class}: {test_preds[:5]}")
     metrics = {
         'blind_test': {
             'MAPE%': mean_absolute_percentage_error(y_blind_test, test_preds) * 100,
@@ -317,14 +317,14 @@ def train_ma_model(y_combined, blind_test_data, window, forecast_steps):
     Returns:
         tuple: (Moving Average series, blind test forecast array, future forecast array)
     """
-    # Ensure y_combined is valid
+    #Ensure y_combined is valid
     if y_combined.isnull().any():
         print("Warning: NaN values detected in y_combined. Please ensure it's cleaned before passing to MA model.")
         return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
 
-    if len(y_combined) < window:
-        print(f"Warning: Not enough data points to calculate moving average with window={window}.")
-        return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
+    # if len(y_combined) < window:
+    #     print(f"Warning: Not enough data points to calculate moving average with window={window}.")
+    #     return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
 
     # if y_combined.nunique() <= 1:
     #     print("Warning: The input series has no variability.")
@@ -335,12 +335,14 @@ def train_ma_model(y_combined, blind_test_data, window, forecast_steps):
         ma_model = y_combined.rolling(window=window).mean()
 
         # Ensure there's enough data in the rolling mean. Forecast for blind test: Use the last known rolling mean
-        if len(ma_model.dropna()) < 1:
-            print("Warning: Not enough non-NaN values in the rolling mean.")
-            return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
+        # if len(ma_model.dropna()) < 1:
+        #     print("Warning: Not enough non-NaN values in the rolling mean.")
+        #     return None, np.full(len(blind_test_data), np.nan), np.full(forecast_steps, np.nan)
 
         # Use the last rolling mean for blind test and future forecast
         ma_forecast = ma_model.dropna().iloc[-len(blind_test_data):]
+
+        print("WHAT IS INSIDE FORCAST?", ma_forecast)
         #print("Last known rolling mean value:", last_known_mean)
         #ma_forecast = np.full(len(blind_test_data), last_known_mean)  # Extend with last rolling mean
         #future_ma_forecast = np.full(forecast_steps, last_known_mean)
@@ -561,18 +563,19 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
             # Use arima_df for ARIMA and MA models
             #ma_df = prepare_for_arima_ma(country_data, target_column)
 
-            (X_train_country, y_train_country), (X_val_country, y_val_country), (X_blind_test_country, y_blind_test_country) = split_data(
-            country_data, train_start="2016-07-01", train_end="2021-12-31", 
-            val_start=val_start, val_end=val_end, 
-            blind_test_start=blind_test_start, blind_test_end=blind_test_end, 
-            target_column=target_column
-            )
+            # (X_train_country, y_train_country), (X_val_country, y_val_country), (X_blind_test_country, y_blind_test_country) = split_data(
+            # country_data, train_start="2016-07-01", train_end="2021-12-31", 
+            # val_start=val_start, val_end=val_end, 
+            # blind_test_start=blind_test_start, blind_test_end=blind_test_end, 
+            # target_column=target_column
+            # )
 
+            #combined_df.reset_index(inplace=True)
 
             ma_model, ma_forecast = train_ma_model(
                 y_combined=y_combined,  # Use the full MA-preprocessed target column (arima_df[target_column])
                 blind_test_data=y_blind_test_country,  # Pass the blind test set
-                window=2,  # Rolling window size for MA
+                window=3,  # Rolling window size for MA
                 forecast_steps=len(y_blind_test_country)  # Forecast steps equal to the length of the blind test set
             )
 
@@ -581,9 +584,10 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
                 'blind_test': {
                     'MAPE%': mean_absolute_percentage_error(y_blind_test_country, ma_forecast) * 100,
                     'Accuracy%': 100 - mean_absolute_percentage_error(y_blind_test_country, ma_forecast) * 100,
-                    'Bias%': (np.mean(ma_forecast - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
+                    'Bias%': np.nan if np.mean(y_blind_test_country) == 0 else (np.mean(ma_forecast - y_blind_test_country) / np.mean(y_blind_test_country)) * 100 #'Bias%': (np.mean(ma_forecast - y_blind_test_country) / np.mean(y_blind_test_country)) * 100
                 }
             }
+            print("WHAT IS ACTUALS?", y_blind_test_country)
             country_results['Moving Average'] = {
                 'metrics': ma_metrics,
                 'blind_test_predictions': ma_forecast,
@@ -597,7 +601,7 @@ def evaluate_models_by_country(models, retrained_models, combined_df, X_combined
 
         results[country] = country_results
 
-    #print(f"@###@Final ARIMA models dictionary: {arima_models}")
+    print(f"@###@Final MA metrics dictionary: {ma_metrics}")
     return results, arima_models, ma_models
 
 
@@ -888,16 +892,17 @@ def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_cons
         dict: Updated results dictionary with the best models for each country.
     """
     backtesting_results = results["backtesting_results"]
+    print("BACKTESTING", backtesting_results)
     best_models = {}
 
     for country, country_data in backtesting_results.items():
         #print(f"\nSelecting the best model for {country}...")
         model_scores = {}
-        print("WHAT IS IN THRE", country_data['predictions'])
+        #print("WHAT IS IN THRE", country_data['predictions'])
         # Access the 'metrics' dictionary for the country
-        models = country_data["metrics"]
+        all_model_metrics = country_data["metrics"]
 
-        for model_name, model_metrics in models.items():
+        for model_name, model_metrics in all_model_metrics.items():
             
             try:
                 # Extract the mean and standard deviation over cycles
@@ -912,11 +917,12 @@ def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_cons
 
                 avg_bias = np.nanmean(bias_values)
                 std_bias = np.nanstd(bias_values)
+
                 accuracy_values = [
-                    d['bias'] 
+                    d['accuracy'] 
                     for cycle_data in model_metrics.values()  # Iterate over cycle-level data
                     for d in cycle_data['metrics']           # Iterate over the list of dictionaries in 'metrics'
-                    if 'bias' in d                           # Ensure 'bias' exists in the dictionary
+                    if 'accuracy' in d                           # Ensure 'accuracy' exists in the dictionary
                     ]
 
                 avg_accuracy = np.nanmean(accuracy_values)
@@ -946,13 +952,18 @@ def select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_cons
         
         #------------------------------------------
         predictions = country_data['predictions'][best_model]
-    
+        # Extract the lists from the dictionary
+        lists = list(predictions.values())
+
+        # Compute the element-wise average
+        averaged_predictions = [sum(values) / len(values) for values in zip(*lists)]
+        print("list", averaged_predictions)
         #-------------------------------------------
         # Store the best model and its predictions
         best_models[country] = {
             "model": best_model,
             "score": model_scores[best_model],
-            "predictions": predictions
+            "predictions": averaged_predictions
         }
         print(f"Best model for {country}: {best_model} with prediction: {predictions}  with score {model_scores[best_model]:.2f}")
 

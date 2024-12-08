@@ -636,14 +636,16 @@ def download_table(n_clicks):
     
     # Extract best models as a DataFrame
     best_models = results.get("best_models", {})
-    predictions = results.get("backtesting_results", {}).get("predictions", {})  # check the dictionary
-    print("DISPLAY", predictions)
+    #predictions = results.get("backtesting_results", {}).get("predictions", {})  # check the dictionary
+    #print("DISPLAY", predictions)
     # Combine the data
     data = [
         {
             "Country": country,
-            "Best Fit Model for Life LOB Data": model_info["model"],
-            "Prediction Values": ", ".join(map(str, results.get(model_info["country"], {}).get(model_info["predictions"], {}).get(model_info["model"], [])))  # Format predictions as a comma-separated string
+            "Best Fit Model": model_info["model"],
+            #"Prediction Values": ", ".join(map(str, results.get(model_info["country"], {}).get(model_info["predictions"], {}).get(model_info["model"], [])))  # Format predictions as a comma-separated string
+            #"Prediction Values": ", ".join(model_info['predictions'])
+            "Prediction Values": ", ".join(map(str, model_info.get('predictions', [])))
         }
         for country, model_info in best_models.items()
     ]
@@ -659,13 +661,11 @@ def download_table(n_clicks):
 @app.callback(
     [Output("accuracy-chart", "figure"),
      Output("bias-chart", "figure")],
-    # [Output("accuracy-chart-container", "children"),
-    #  Output("bias-chart-container", "children")],
     [Input("country-dropdown", "value"),
      Input("model-dropdown", "value")]
 )
 def update_backtesting_charts(selected_country, selected_model):
-    print(f"Callback triggered with Country: {selected_country}, Model: {selected_model}")
+    #print(f"Callback triggered with Country: {selected_country}, Model: {selected_model}")
     if results is None or selected_country is None or selected_model is None:
         no_data_msg = html.Div("No data available. Please select valid options.", style={"color": "red"})
         return no_data_msg, no_data_msg
@@ -678,10 +678,10 @@ def update_backtesting_charts(selected_country, selected_model):
 
     #print(f'TEST {country_data}')
     model_data = country_data.get("metrics", {}).get(selected_model, {})
-    print(f"Selected Country: {selected_country}")
-    print(f"Selected Model: {selected_model}")
-    print(f"Model data keys: {list(model_data.keys())}")
-    print(f'Model data content {model_data}')
+    #print(f"Selected Country: {selected_country}")
+    #print(f"Selected Model: {selected_model}")
+    #print(f"Model data keys: {list(model_data.keys())}")
+    #print(f'Model data content {model_data}')
     
     if not model_data:
         no_data_msg = html.Div(f"No data available for {selected_country} and {selected_model}.", style={"color": "red"})
@@ -789,8 +789,8 @@ def update_backtesting_charts(selected_country, selected_model):
                 bias_based_dict[lag_key] = {}
             bias_based_dict[lag_key][cycle] = bias
 
-    print("testing bias", bias_based_dict)
-    print("testing type", type(accuracy_based_dict.values()))
+    #print("testing bias", bias_based_dict)
+    #print("testing type", type(accuracy_based_dict.values()))
 
     # Chart 1: Metrics across cycles
     fig_accuracy = go.Figure()
@@ -859,7 +859,7 @@ def update_backtesting_charts(selected_country, selected_model):
         plot_bgcolor="white",
         showlegend=True
     )
-    print(f"Returning: {fig_accuracy}, {fig_bias}")
+    #print(f"Returning: {fig_accuracy}, {fig_bias}")
     # Return both figures
     #return dcc.Graph(figure=fig_accuracy), dcc.Graph(figure=fig_bias)
     return fig_accuracy, fig_bias

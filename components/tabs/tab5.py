@@ -12,19 +12,22 @@ def generate_best_model_table(results):
         html.Div: Dash HTML layout containing the table and download button.
     """
     best_models = results.get("best_models", {})
-    predictions = results.get("backtesting_results", {}).get("predictions", {}) 
-    print("DISPLAY IN TAB", results.get("backtesting_results", {}).get("Sweden", {}).get("predictions", {}).get(best_models["Sweden"]["model"], []))
+    #print("----best models", best_models["Sweden"]["model"])
+    #predictions = results.get("backtesting_results", {}).get("predictions", {}) 
+    #print("DISPLAY IN TAB", results.get("backtesting_results", {}).get("Sweden", {}).get("predictions", {}).get(best_models["Sweden"]["model"], []))
     # Prepare the data for the table
     data = [
         {
             "Country": country,
             "Best Fit Model": model_info["model"],
-            "Prediction Values": ", ".join(map(str, results.get(model_info["country"], {}).get(model_info["predictions"], {}).get(model_info["model"], [])))  # Format predictions as a comma-separated string
+            #"Prediction Values": ", ".join(model_info['predictions'])
+            "Prediction Values": ", ".join(map(str, model_info.get('predictions', [])))
+            #"Prediction Values": ", ".join(map(str, results.get(model_info["country"], {}).get(model_info["predictions"], {}).get(model_info["model"], [])))  # Format predictions as a comma-separated string
         }
         for country, model_info in best_models.items()
     ]
 
-    # Convert to a DataFrame for sorting (optional)
+    # Convert to a DataFrame for sorting
     df = pd.DataFrame(data)
     df = df.sort_values(by="Country").reset_index(drop=True)
 
@@ -33,7 +36,7 @@ def generate_best_model_table(results):
         [
             # Instructional paragraph with top spacing
             html.P(
-                "Below is the summary of the best-performing models, including XGBoost, LightGBM, ARIMA, and Moving Average, "
+                "Below is the summary of the best-performing models, including relevant prediction values, "
                 "selected for each country. These models were evaluated and chosen based on their ability to provide accurate predictions for the dataset. "
                 "You can download the results for further analysis using the button below.",
                 style={
@@ -81,12 +84,12 @@ def generate_best_model_table(results):
                     id='best-models-table',
                     columns=[
                         {"name": "Country", "id": "Country"},
-                        {"name": "Best Fit Model for Life LOB", "id": "Best Fit Model"},
+                        {"name": "Best Fit Model for Life LOB Data", "id": "Best Fit Model"},
                         {"name": "Prediction Values", "id": "Prediction Values"}
                     ],
                     data=df.to_dict("records"),
                     style_table={
-                        'width': '80%',
+                        'width': '90%',
                         'margin': '0 auto',  # Center table with top and bottom margin
                     },
                     style_cell={
@@ -108,7 +111,7 @@ def generate_best_model_table(results):
                         }
                     ]
                 ),
-                style={"width": "60%", "margin": "0 auto"}  # Center the table
+                style={"width": "70%", "margin": "0 auto"}  # Center the table
             ),
         ],
         style={
