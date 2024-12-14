@@ -20,6 +20,8 @@ def render_tab3():
     """
     # Extract the list of countries from results
     countries = list(results.get('country_metrics', {}).keys()) if results else []
+    #print("Countries loaded:", countries)
+    #print("Results data structure:", results)
     
     # Set the default country to the first one in the list
     default_country = countries[0] if countries else None
@@ -70,7 +72,8 @@ def render_tab3():
                                     {'label': 'ARIMA (Blind Test)', 'value': 'ARIMA'},
                                     {'label': 'Moving Average (Blind Test)', 'value': 'Moving Average'}
                                 ],
-                                value='Default XGBoost Validation',
+                                value='Default XGBoost Validation', # Default value
+                                multi=True,  # Enable multi-selection
                                 style={
                                     'width': '300px',
                                     'fontSize': '14px',

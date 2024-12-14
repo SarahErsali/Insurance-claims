@@ -91,9 +91,109 @@ def load_and_process_uploaded_data(contents, filenames, existing_dataframes):
     return combined_df
 
 
+# def prepare_for_arima_ma(combined_df, target_column):
+#     """
+#     Prepare individual country datasets for ARIMA/MA modeling and save all preprocessed data in a single DataFrame.
 
+#     Parameters:
+#     - combined_df: The combined DataFrame containing data for all countries.
+#     - target_column: The target variable for time series modeling.
+
+#     Returns:
+#     - A single DataFrame with all preprocessed data, including a 'Country' column.
+#     """
+#     if 'Date' not in combined_df.columns or target_column not in combined_df.columns:
+#         raise ValueError("The combined_df must contain 'Date' and target_column for ARIMA/MA modeling.")
+    
+#     # Ensure the 'Date' column is datetime
+#     combined_df['Date'] = pd.to_datetime(combined_df['Date'])
+
+#     # Initialize an empty list to store processed data
+#     processed_data = []
+
+#     for country, group in combined_df.groupby('Country'):
+#         # Extract necessary columns
+#         arima_df = group[['Date', target_column]].dropna()
+
+#         # Set Date as index
+#         arima_df.set_index('Date', inplace=True)
+
+#         # Infer and set frequency
+#         inferred_freq = pd.infer_freq(arima_df.index)
+#         if inferred_freq is None:
+#             raise ValueError(f"Could not infer frequency for the time series data of country: {country}.")
+#         arima_df.index.freq = inferred_freq
+
+#         # Check for missing periods
+#         missing_periods = pd.date_range(start=arima_df.index.min(), end=arima_df.index.max(), freq=inferred_freq).difference(arima_df.index)
+#         if len(missing_periods) > 0:
+#             print(f"Warning: Missing periods detected in the time series for country {country}: {missing_periods}")
+
+#         # Add a 'Country' column and append to the processed data list
+#         arima_df = arima_df.iloc[5:]  # Drop the first 5 rows
+#         arima_df['Country'] = country
+#         processed_data.append(arima_df)
+
+#     # Concatenate all processed data into a single DataFrame
+#     country_dfs = pd.concat(processed_data).reset_index()
+
+#     return country_dfs
 
 def prepare_for_arima_ma(combined_df, target_column):
+    """
+    Prepare individual country datasets for ARIMA/MA modeling.
+
+    Parameters:
+    - combined_df: The combined DataFrame containing data for all countries.
+    - target_column: The target variable for time series modeling.
+
+    Returns:
+    - A dictionary with country names as keys and individual DataFrames as values.
+    """
+    #print("\n----- START Pre-processing prepare_for_arima_ma")
+    if 'Date' not in combined_df.columns or target_column not in combined_df.columns:
+        raise ValueError("The combined_df must contain 'Date' and target_column for ARIMA/MA modeling.")
+    
+    # Ensure the 'Date' column is datetime
+    combined_df['Date'] = pd.to_datetime(combined_df['Date'])
+
+    # Split the combined DataFrame into individual DataFrames for each country
+    country_dfs = {}
+    for country, group in combined_df.groupby('Country'):
+        # Extract necessary columns
+        arima_df = group[['Date', target_column]].dropna() #.copy()
+        #print(f"Initial arima_df shape: {arima_df.shape}")
+        
+        # Set Date as index
+        arima_df.set_index('Date', inplace=True)
+        #print(f"arima_df after setting 'Date' as index:\n{arima_df.head()}")
+        
+        # Infer and set frequency
+        inferred_freq = pd.infer_freq(arima_df.index)
+        #print(f"Inferred frequency: {inferred_freq}")
+        if inferred_freq is None:
+            raise ValueError(f"Could not infer frequency for the time series data of country: {country}.")
+        arima_df.index.freq = inferred_freq
+        
+        # Check for missing periods
+        missing_periods = pd.date_range(start=arima_df.index.min(), end=arima_df.index.max(), freq=inferred_freq).difference(arima_df.index)
+        if len(missing_periods) > 0:
+            print(f"Warning: Missing periods detected in the time series for country {country}: {missing_periods}")
+        #print(f"---- ARIMA dataset size: {arima_df.shape[0]}") 
+        # Store the processed DataFrame for the current country
+        country_dfs[country] = arima_df.iloc[5:]
+        #print(f"---- ARIMA dataset size: {country_dfs[country].shape[0]}") 
+        #print("IS IT OK?", country, country_dfs[country])
+        #print("inside", country_dfs)
+    #print("\n----- END Pre-processing prepare_for_arima_ma")
+    return country_dfs
+
+
+
+
+
+
+def prepare_for_arima_ma_old(combined_df, target_column):
     
     # Extract only the Date and target columns
     if 'Date' not in combined_df.columns or target_column not in combined_df.columns:

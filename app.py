@@ -36,7 +36,7 @@ except FileNotFoundError:
 # -------------------- Initialize the app --------------------------------
 
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
-app.title = "Insurance Consultant Service"
+app.title = "Data Insight Service"
 
 # Define the layout of the app
 app.layout = html.Div([
@@ -345,99 +345,127 @@ def update_plot(selected_country, selected_feature):
     [Input('tab3-country-dropdown', 'value'),
      Input('tab3-model-dropdown', 'value')]
 )
-def update_model_predictions(selected_country, selected_model):
+def update_model_predictions(selected_country, selected_models):
     global results
-
+    print("ARIMA RESULTS", results['country_metrics']["Sweden"])
     # Check if results are loaded
     if results is None:
         raise ValueError("Results have not been generated or loaded. Please ensure results.pkl exists or generate the results.")
+
+    # Handle case where no model is selected
+    if not selected_models:
+        return go.Figure(), go.Figure()  # Return empty plots if no models are selected
+
+    # Ensure selected_models is a list for multi-selection
+    if not isinstance(selected_models, list):
+        selected_models = [selected_models]
 
     # Create figures
     prediction_fig = go.Figure()
     metrics_fig = go.Figure()
 
     try:
-        # Debugging: Log selected inputs
         print(f"Selected Country: {selected_country}")
-        print(f"Selected Model: {selected_model}")
+        print(f"Selected Models: {selected_models}")
 
-        # Parse selected_model to extract the model and dataset
-        if 'Validation' in selected_model:
-            dataset = 'validation'
-            model_name = selected_model.replace(' Validation', '')
-            start_date = "2022-01-01"
-            end_date = "2023-03-31"
-        elif 'Blind Test' in selected_model:
-            dataset = 'blind_test'
-            model_name = selected_model.replace(' Blind Test', '')
-            start_date = "2023-04-01"
-            end_date = "2024-03-31"
-        else:
-            dataset = 'blind_test'
-            model_name = selected_model  # For ARIMA and Moving Average
-            start_date = "2023-04-01"
-            end_date = "2024-03-31"
-
-        print(f"Parsed Model Name: {model_name}, Dataset: {dataset}")
-
-        # Get country-specific data
+        # Add the actual values (only once)
         country_metrics = results['country_metrics'].get(selected_country, {})
-        model_metrics = country_metrics.get(model_name, {})
-
-        # Extract predictions and actual values
-        actual_values = model_metrics.get(f'{dataset}_actuals', None)
-        predictions = model_metrics.get(f'{dataset}_predictions', None)
+        first_model = selected_models[0]
+        #if first_model:
+        # Parse the dataset type and get actual values from the first model
+        
+        dataset = 'validation'
+        start_date = "2022-01-01"
+        end_date = "2023-03-31"
+        actual_values = list(country_metrics.get("Default XGBoost", {}).get(f'validation_actuals', None))
         date_range = pd.date_range(start=start_date, end=end_date, freq='QS')
-
-        # Populate the prediction figure
         if actual_values is not None and len(actual_values) > 0:
             prediction_fig.add_trace(go.Scatter(
                 x=date_range,
                 y=list(actual_values.values) if hasattr(actual_values, 'values') else actual_values,
                 mode='lines',
-                name='Actual'
+                name='Actual',
+                line=dict(color='black', dash='dash')  # Black dashed line for actuals
             ))
-
-        if predictions is not None and len(predictions) > 0:
+        
+        dataset = 'blind_test'
+        start_date = "2023-04-01"
+        end_date = "2024-03-31"
+        date_range = pd.date_range(start=start_date, end=end_date, freq='QS')
+        actual_values = list(country_metrics.get("Default XGBoost", {}).get(f'blind_test_actuals', None))
+        if actual_values is not None and len(actual_values) > 0:
             prediction_fig.add_trace(go.Scatter(
                 x=date_range,
-                y=predictions.tolist(),
+                y=list(actual_values.values) if hasattr(actual_values, 'values') else actual_values,
                 mode='lines',
-                name=f'{selected_model}'
+                #name='Actual',
+                showlegend=False,
+                line=dict(color='black', dash='dash')  # Black dashed line for actuals
             ))
-
-        # Extract metrics (accuracy, bias, MAPE)
-        metrics_data = country_metrics.get(model_name, {}).get('metrics', {})
-
-        # Determine the dataset type (validation or blind_test) based on the model
-        if 'Validation' in selected_model:
-            dataset_type = 'validation'
-        else:
-            dataset_type = 'blind_test'
-
-        # Safely retrieve metrics for the selected dataset
-        dataset_metrics = metrics_data.get(dataset_type, {})
-        if dataset_metrics:
-            # Extract individual metrics
-            accuracy = dataset_metrics.get('Accuracy%', 0)
-            bias = dataset_metrics.get('Bias%', 0)
-            mape = dataset_metrics.get('MAPE%', 0)
-
-            # Add a bar chart trace with these metrics
-            metrics_fig.add_trace(go.Bar(
-                x=['Accuracy', 'Bias', 'MAPE'],  # Metric names
-                y=[accuracy, bias, mape],       # Metric values
-                name=f"{selected_model} Metrics",
-                marker=dict(color=['#636EFA', '#EF553B', '#00CC96'])  # Different colors for each metric
-            ))
-        else:
-            print(f"No metrics found for {model_name} in {dataset_type}.")
 
         
 
-        # Update the layout of the figures
+        # Add predictions for each selected model
+        for selected_model in selected_models:
+            # Parse selected_model to extract the model and dataset
+            if 'Validation' in selected_model:
+                dataset = 'validation'
+                model_name = selected_model.replace(' Validation', '')
+                start_date = "2022-01-01"
+                end_date = "2023-03-31"
+            elif 'Blind Test' in selected_model:
+                dataset = 'blind_test'
+                model_name = selected_model.replace(' Blind Test', '')
+                start_date = "2023-04-01"
+                end_date = "2024-03-31"
+            else:
+                dataset = 'blind_test'
+                model_name = selected_model
+                start_date = "2023-04-01"
+                end_date = "2024-03-31"
+
+            print(f"Parsed Model Name: {model_name}, Dataset: {dataset}")
+            date_range = pd.date_range(start=start_date, end=end_date, freq='QS')
+            model_metrics = country_metrics.get(model_name, {})
+            predictions = model_metrics.get(f'{dataset}_predictions', None)
+            if not isinstance(predictions, list):
+                predictions = predictions.tolist()
+            print("PREDS", predictions)
+            if predictions is not None and len(predictions) > 0:
+                print("DRAWING PREDS for", selected_model)
+                prediction_fig.add_trace(go.Scatter(
+                    x=date_range,
+                    y=predictions,
+                    mode='lines',
+                    name=f'{selected_model}'
+                ))
+
+            # Extract metrics (accuracy, bias)
+            metrics_data = country_metrics.get(model_name, {}).get('metrics', {})
+
+            # Determine the dataset type (validation or blind_test) based on the model
+            if 'Validation' in selected_model:
+                dataset_type = 'validation'
+            else:
+                dataset_type = 'blind_test'
+
+            # Safely retrieve metrics for the selected dataset
+            dataset_metrics = metrics_data.get(dataset_type, {})
+            if dataset_metrics:
+                # Extract individual metrics
+                accuracy = dataset_metrics.get('Accuracy%', 0)
+                bias = dataset_metrics.get('Bias%', 0)
+
+                # Add a bar chart trace with these metrics
+                metrics_fig.add_trace(go.Bar(
+                    x=['Accuracy', 'Bias'],  # Metric names
+                    y=[accuracy, bias],     # Metric values
+                    name=f"{selected_model} Metrics"
+                ))
+
+        # Update the layout for the prediction figure
         prediction_fig.update_layout(
-            title=f"{selected_model} Prediction Values vs Actual Values for {selected_country}",
+            title=f"Predictions vs Actuals for {selected_country}",
             xaxis_title="Date",
             yaxis_title="NET Claims Incurred",
             legend_title="Legend",
@@ -447,176 +475,161 @@ def update_model_predictions(selected_country, selected_model):
             plot_bgcolor='white'
         )
 
+        # Update the layout for the metrics bar chart
         metrics_fig.update_layout(
-            title=f"Performance Metrics of {selected_model} for {selected_country}",
-            #xaxis_title="Metrics",
+            title=f"Performance Metrics for {selected_country}",
             yaxis_title="Value (%)",
-            # xaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
-            # yaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
-            barmode='group',
-            showlegend=False,
+            barmode='group',  # Group bars by model
             paper_bgcolor='white',
             plot_bgcolor='white'
         )
 
     except KeyError as e:
-        raise ValueError(f"Error accessing data for {selected_country}, {selected_model}: {e}")
-
+        raise ValueError(f"Error accessing data for {selected_country}, {selected_models}: {e}")
+    except Exception as e:
+        print(e)
     return prediction_fig, metrics_fig
 
-# @app.callback(
-#     Output('model-comparison-graph', 'figure'),
-#     Input('tab3-country-dropdown', 'value'),
-#     Input('tab3-model-dropdown', 'value'),
-# )
-# def update_model_predictions(selected_country, selected_model):
-#     global results
 
-    
+# @app.callback(
+#     [Output('model-comparison-graph', 'figure'),
+#      Output('metrics-bar-chart', 'figure')],
+#     [Input('tab3-country-dropdown', 'value'),
+#      Input('tab3-model-dropdown', 'value')]
+# )
+# def update_model_predictions(selected_country, selected_models):
+#     global results
 
 #     # Check if results are loaded
 #     if results is None:
 #         raise ValueError("Results have not been generated or loaded. Please ensure results.pkl exists or generate the results.")
 
-#     # Create a Plotly figure
-#     fig = go.Figure()
+    
+#     # Handle case where no model is selected
+#     if not selected_models:
+#         return go.Figure(), go.Figure()  # Return empty plots if no models are selected
+
+#     # Ensure selected_models is a list for multi-selection
+#     if not isinstance(selected_models, list):
+#         selected_models = [selected_models]
+        
+
+#     # Create figures
+#     prediction_fig = go.Figure()
+#     metrics_fig = go.Figure()
 
 #     try:
+
+        
 #         # Debugging: Log selected inputs
 #         print(f"Selected Country: {selected_country}")
-#         print(f"Selected Model: {selected_model}")
+#         print(f"Selected Model: {selected_models}")
 
-#         # Parse selected_model to extract the model and dataset
-#         if 'Validation' in selected_model:
-#             dataset = 'validation'
-#             model_name = selected_model.replace(' Validation', '')
-#             start_date = "2022-01-01"
-#             end_date = "2023-03-31"
-#         elif 'Blind Test' in selected_model:
-#             dataset = 'blind_test'
-#             model_name = selected_model.replace(' Blind Test', '')
-#             start_date = "2023-04-01"
-#             end_date = "2024-03-31"
-#         else:
-#             dataset = 'blind_test'
-#             model_name = selected_model  # For ARIMA and Moving Average
-#             start_date = "2023-04-01"
-#             end_date = "2024-03-31"
-
-#         print(f"Parsed Model Name: {model_name}, Dataset: {dataset}")
-
-#         # Handle "All Countries" option
-#         if selected_country == 'All Countries':
+        
+#         for selected_model in selected_models:
             
-#             # For default ML models, fetch actuals from results['ml_predictions']
-#             if model_name in ['Default XGBoost', 'Default LightGBM']:
-#                 predictions = results['predictions'][f'{dataset}_predictions'][model_name]
-#                 actual_values = results['actuals'][f'{dataset}_actuals'][model_name]
+#             # Parse selected_model to extract the model and dataset
+#             if 'Validation' in selected_model:
+#                 dataset = 'validation'
+#                 model_name = selected_model.replace(' Validation', '')
+#                 start_date = "2022-01-01"
+#                 end_date = "2023-03-31"
+#             elif 'Blind Test' in selected_model:
+#                 dataset = 'blind_test'
+#                 model_name = selected_model.replace(' Blind Test', '')
+#                 start_date = "2023-04-01"
+#                 end_date = "2024-03-31"
 #             else:
-#                 # For retrained ML models, ARIMA, and Moving Average, fetch actuals differently
-#                 predictions = results['predictions'][f'{dataset}_predictions'][model_name]
-#                 actual_values = results['actuals'][f'{dataset}_actuals'][model_name]
+#                 dataset = 'blind_test'
+#                 model_name = selected_model  # For ARIMA and Moving Average
+#                 start_date = "2023-04-01"
+#                 end_date = "2024-03-31"
 
-#         else:
+#             print(f"Parsed Model Name: {model_name}, Dataset: {dataset}")
+
 #             # Get country-specific data
 #             country_metrics = results['country_metrics'].get(selected_country, {})
-#             print(f"Country Metrics for {selected_country}: {list(country_metrics.keys())}")  
-
 #             model_metrics = country_metrics.get(model_name, {})
-#             print(f"Model Metrics for {model_name}: {list(model_metrics.keys())}")  
 
+#             # Extract predictions and actual values
 #             actual_values = model_metrics.get(f'{dataset}_actuals', None)
 #             predictions = model_metrics.get(f'{dataset}_predictions', None)
+#             date_range = pd.date_range(start=start_date, end=end_date, freq='QS')
 
-        
-#         print(f"Actual Values: {actual_values}")
-#         print(f"Predictions: {predictions}")
+#             # Populate the prediction figure
+#             if actual_values is not None and len(actual_values) > 0:
+#                 prediction_fig.add_trace(go.Scatter(
+#                     x=date_range,
+#                     y=list(actual_values.values) if hasattr(actual_values, 'values') else actual_values,
+#                     mode='lines',
+#                     name='Actual'
+#                 ))
 
-        
+#             if predictions is not None and len(predictions) > 0:
+#                 prediction_fig.add_trace(go.Scatter(
+#                     x=date_range,
+#                     y=predictions.tolist(),
+#                     mode='lines',
+#                     name=f'{selected_model}'
+#                 ))
 
-#         # # Raise an error if both predictions and actual values are missing
-#         # if predictions is None and actual_values is None:
-#         #     raise KeyError(f"No data found for {selected_country}, {selected_model}.")
+#             # Extract metrics (accuracy, bias)
+#             metrics_data = country_metrics.get(model_name, {}).get('metrics', {})
 
-#         # # Specific debugging for ARIMA and Moving Average
-#         # if model_name == 'ARIMA':
-#         #     print(f"ARIMA Metrics: {results['country_metrics'][selected_country]['ARIMA']}")  # Debugging statement
-#         # elif model_name == 'Moving Average':
-#         #     print(f"Moving Average Metrics: {results['country_metrics'][selected_country]['Moving Average']}")  # Debugging statement
+#             # Determine the dataset type (validation or blind_test) based on the model
+#             if 'Validation' in selected_model:
+#                 dataset_type = 'validation'
+#             else:
+#                 dataset_type = 'blind_test'
 
-#         # Align indices for actual values and predictions
-#         print("PREDICTION VALUES BEFORE", predictions)
-#         print("ACTUALS VALUES BEFORE", actual_values)
+#             # Safely retrieve metrics for the selected dataset
+#             dataset_metrics = metrics_data.get(dataset_type, {})
+#             if dataset_metrics:
+#                 # Extract individual metrics
+#                 accuracy = dataset_metrics.get('Accuracy%', 0)
+#                 bias = dataset_metrics.get('Bias%', 0)
+#                 #mape = dataset_metrics.get('MAPE%', 0)
 
-#         # if hasattr(actual_values, "index") and hasattr(predictions, "index"):
-#         #     actual_values = actual_values.reindex(predictions.index).dropna()
-#         #     predictions = predictions.loc[actual_values.index].reset_index(drop=True)
+#                 # Add a bar chart trace with these metrics
+#                 metrics_fig.add_trace(go.Bar(
+#                     x=['Accuracy', 'Bias'],  # Metric names
+#                     y=[accuracy, bias],       # Metric values
+#                     name=f"{selected_model} Metrics",
+#                     marker=dict(color=['#636EFA', '#EF553B', '#00CC96'])  # Different colors for each metric
+#                 ))
+#             else:
+#                 print(f"No metrics found for {model_name} in {dataset_type}.")
 
-#         # elif len(actual_values) != len(predictions):
-#         #     # Fallback to range index if lengths differ
-#         #     actual_values = pd.Series(actual_values).reset_index(drop=True)
-#         #     predictions = pd.Series(predictions).reset_index(drop=True)
-#         print("PREDICTION VALUES AFTER", predictions)
-#         print("ACTUALS VALUES AFTER", actual_values)
-#         # # Align indices for actual values and predictions
-#         # if hasattr(actual_values, "index") and hasattr(predictions, "index"):
-#         #     # Align actual_values and predictions by their shared indices
-#         #     aligned_indices = actual_values.index.intersection(predictions.index)
-#         #     actual_values = actual_values.loc[aligned_indices]
-#         #     predictions = predictions.loc[aligned_indices]
-#         # elif len(actual_values) != len(predictions):
-#         #     # Warn about mismatched lengths
-#         #     print("Warning: Actual values and predictions have mismatched lengths.")
-#         #     return html.Div("Error: Mismatched lengths between actual values and predictions.", style={"color": "red"})
-#         #print("ACTUAL VALUES LIST", list(actual_values.values))
-#         #print("PREDICTION VALUES LIST", predictions.tolist())
-#         # Add actual values to the plot
-#         date_range = pd.date_range(start=start_date, end=end_date, freq='QS')
-#         if actual_values is not None and len(actual_values) > 0:
-#             fig.add_trace(go.Scatter(
-#                 x=date_range, #actual_values.index if hasattr(actual_values, 'index') else list(range(len(actual_values))),
-#                 y=list(actual_values.values) if hasattr(actual_values, 'values') else actual_values,
-#                 mode='lines',
-#                 name='Actual',
-#                 #line=dict(dash='dot')
-#             ))
+            
 
-#         # Add model predictions to the plot
-#         if predictions is not None and len(predictions) > 0:
-#             fig.add_trace(go.Scatter(
-#                 x=date_range, #predictions.index if hasattr(predictions, 'index') else list(range(len(predictions))),
-#                 y=predictions.tolist(),
-#                 mode='lines',
-#                 name=f'{selected_model}'
-#             ))
+#             # Update the layout of the figures
+#             prediction_fig.update_layout(
+#                 title=f"Prediction Values vs Actual Values for {selected_country}",
+#                 xaxis_title="Date",
+#                 yaxis_title="NET Claims Incurred",
+#                 legend_title="Legend",
+#                 xaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
+#                 yaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
+#                 paper_bgcolor='white',
+#                 plot_bgcolor='white'
+#             )
+
+#             metrics_fig.update_layout(
+#                 title=f"Performance Metrics for {selected_country}",
+#                 #xaxis_title="Metrics",
+#                 yaxis_title="Value (%)",
+#                 # xaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
+#                 # yaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
+#                 barmode='group',
+#                 showlegend=False,
+#                 paper_bgcolor='white',
+#                 plot_bgcolor='white'
+#             )
 
 #     except KeyError as e:
 #         raise ValueError(f"Error accessing data for {selected_country}, {selected_model}: {e}")
 
-#     # Update the layout of the figure
-#     fig.update_layout(
-#     title=f"{selected_model} Prediction Values vs Actual Values for {selected_country}",
-#     xaxis_title="Date",
-#     yaxis_title="NET Claims Incurred",
-#     legend_title="Legend",
-#     xaxis=dict(
-#         showgrid=False,  # Disable x-axis grid
-#         showline=True,   # Show x-axis line
-#         linecolor='black',  # Black color for the axis line
-#         linewidth=1       # Narrow x-axis line
-#     ),
-#     yaxis=dict(
-#         showgrid=False,  # Disable y-axis grid
-#         showline=True,   # Show y-axis line
-#         linecolor='black',  # Black color for the axis line
-#         linewidth=1       # Narrow y-axis line
-#     ),
-#     paper_bgcolor='white',  # Background of the entire plot area
-#     plot_bgcolor='white'    # Background of the graph itself
-# )
-
-
-#     return fig
+#     return prediction_fig, metrics_fig
 
 
 
