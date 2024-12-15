@@ -1856,14 +1856,22 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     #     combined_df, shock_years, shock_quarter, shock_features, shock_magnitude, 
     #     models, retrained_models, target_column, val_start, val_end, blind_test_start, blind_test_end
     # )
-
+    print("WHAT THE FUCK")
     # Select the best model for each country
     results = select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_consistency=0.2)
     #print("Best Model Selection:", results.get("best_models"))
     #print(results)  # Check if `results` is None or has the expected structure
     #print(results.keys())  # Check if 'country_metrics' is part of the keys
 
-
+     # Specify the number of rows to select
+    print("prediction_periods")
+    print("THIS", combined_df['Year'])
+    print("THIS", combined_df['Year'][-n_lags:])
+    print("GO", combined_df['Quarter'])
+    print("GO", combined_df['Quarter'][-n_lags:])
+    # Create a list of the last X elements from two columns concatenated with a space
+    results["prediction_periods"] = (combined_df['Year'][-n_lags:].astype(str) + ' Q' + combined_df['Quarter'][-n_lags:].astype(str)).tolist()
+    print("prediction_periods", results["prediction_periods"])
     # Pretty-print using json.dumps
     #print(json.dumps(results, indent=4))
 

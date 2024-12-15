@@ -20,6 +20,8 @@ from io import StringIO
 from components.functions import get_or_generate_results
 import joblib
 import os
+#from dash import callback_context
+from dash import html
 
 
 # ------------------- Initialize Saved Results -------------------------
@@ -491,145 +493,7 @@ def update_model_predictions(selected_country, selected_models):
     return prediction_fig, metrics_fig
 
 
-# @app.callback(
-#     [Output('model-comparison-graph', 'figure'),
-#      Output('metrics-bar-chart', 'figure')],
-#     [Input('tab3-country-dropdown', 'value'),
-#      Input('tab3-model-dropdown', 'value')]
-# )
-# def update_model_predictions(selected_country, selected_models):
-#     global results
 
-#     # Check if results are loaded
-#     if results is None:
-#         raise ValueError("Results have not been generated or loaded. Please ensure results.pkl exists or generate the results.")
-
-    
-#     # Handle case where no model is selected
-#     if not selected_models:
-#         return go.Figure(), go.Figure()  # Return empty plots if no models are selected
-
-#     # Ensure selected_models is a list for multi-selection
-#     if not isinstance(selected_models, list):
-#         selected_models = [selected_models]
-        
-
-#     # Create figures
-#     prediction_fig = go.Figure()
-#     metrics_fig = go.Figure()
-
-#     try:
-
-        
-#         # Debugging: Log selected inputs
-#         print(f"Selected Country: {selected_country}")
-#         print(f"Selected Model: {selected_models}")
-
-        
-#         for selected_model in selected_models:
-            
-#             # Parse selected_model to extract the model and dataset
-#             if 'Validation' in selected_model:
-#                 dataset = 'validation'
-#                 model_name = selected_model.replace(' Validation', '')
-#                 start_date = "2022-01-01"
-#                 end_date = "2023-03-31"
-#             elif 'Blind Test' in selected_model:
-#                 dataset = 'blind_test'
-#                 model_name = selected_model.replace(' Blind Test', '')
-#                 start_date = "2023-04-01"
-#                 end_date = "2024-03-31"
-#             else:
-#                 dataset = 'blind_test'
-#                 model_name = selected_model  # For ARIMA and Moving Average
-#                 start_date = "2023-04-01"
-#                 end_date = "2024-03-31"
-
-#             print(f"Parsed Model Name: {model_name}, Dataset: {dataset}")
-
-#             # Get country-specific data
-#             country_metrics = results['country_metrics'].get(selected_country, {})
-#             model_metrics = country_metrics.get(model_name, {})
-
-#             # Extract predictions and actual values
-#             actual_values = model_metrics.get(f'{dataset}_actuals', None)
-#             predictions = model_metrics.get(f'{dataset}_predictions', None)
-#             date_range = pd.date_range(start=start_date, end=end_date, freq='QS')
-
-#             # Populate the prediction figure
-#             if actual_values is not None and len(actual_values) > 0:
-#                 prediction_fig.add_trace(go.Scatter(
-#                     x=date_range,
-#                     y=list(actual_values.values) if hasattr(actual_values, 'values') else actual_values,
-#                     mode='lines',
-#                     name='Actual'
-#                 ))
-
-#             if predictions is not None and len(predictions) > 0:
-#                 prediction_fig.add_trace(go.Scatter(
-#                     x=date_range,
-#                     y=predictions.tolist(),
-#                     mode='lines',
-#                     name=f'{selected_model}'
-#                 ))
-
-#             # Extract metrics (accuracy, bias)
-#             metrics_data = country_metrics.get(model_name, {}).get('metrics', {})
-
-#             # Determine the dataset type (validation or blind_test) based on the model
-#             if 'Validation' in selected_model:
-#                 dataset_type = 'validation'
-#             else:
-#                 dataset_type = 'blind_test'
-
-#             # Safely retrieve metrics for the selected dataset
-#             dataset_metrics = metrics_data.get(dataset_type, {})
-#             if dataset_metrics:
-#                 # Extract individual metrics
-#                 accuracy = dataset_metrics.get('Accuracy%', 0)
-#                 bias = dataset_metrics.get('Bias%', 0)
-#                 #mape = dataset_metrics.get('MAPE%', 0)
-
-#                 # Add a bar chart trace with these metrics
-#                 metrics_fig.add_trace(go.Bar(
-#                     x=['Accuracy', 'Bias'],  # Metric names
-#                     y=[accuracy, bias],       # Metric values
-#                     name=f"{selected_model} Metrics",
-#                     marker=dict(color=['#636EFA', '#EF553B', '#00CC96'])  # Different colors for each metric
-#                 ))
-#             else:
-#                 print(f"No metrics found for {model_name} in {dataset_type}.")
-
-            
-
-#             # Update the layout of the figures
-#             prediction_fig.update_layout(
-#                 title=f"Prediction Values vs Actual Values for {selected_country}",
-#                 xaxis_title="Date",
-#                 yaxis_title="NET Claims Incurred",
-#                 legend_title="Legend",
-#                 xaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
-#                 yaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
-#                 paper_bgcolor='white',
-#                 plot_bgcolor='white'
-#             )
-
-#             metrics_fig.update_layout(
-#                 title=f"Performance Metrics for {selected_country}",
-#                 #xaxis_title="Metrics",
-#                 yaxis_title="Value (%)",
-#                 # xaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
-#                 # yaxis=dict(showgrid=False, showline=True, linecolor='black', linewidth=1),
-#                 barmode='group',
-#                 showlegend=False,
-#                 paper_bgcolor='white',
-#                 plot_bgcolor='white'
-#             )
-
-#     except KeyError as e:
-#         raise ValueError(f"Error accessing data for {selected_country}, {selected_model}: {e}")
-
-#     return prediction_fig, metrics_fig
 
 
 
@@ -639,33 +503,63 @@ def update_model_predictions(selected_country, selected_models):
 
 @app.callback(
     Output("download-table", "data"),
-    Input("download-button", "n_clicks"),
+    [Input("download-button", "n_clicks"),
+     #Input("country-dropdown", "value")
+     ],  
     prevent_initial_call=True,
 )
 def download_table(n_clicks):
     global results
+
+    # # Determine which input triggered the callback
+    # ctx = callback_context
+    # if not ctx.triggered or ctx.triggered[0]["prop_id"].split(".")[0] != "download-button":
+    #     return None  # Do nothing if the button was not clicked
+    
+    quarters = results["prediction_periods"]
+     
     if results is None:
         return None
     
     # Extract best models as a DataFrame
     best_models = results.get("best_models", {})
-    #predictions = results.get("backtesting_results", {}).get("predictions", {})  # check the dictionary
-    #print("DISPLAY", predictions)
     # Combine the data
     data = [
         {
-            "Country": country,
-            "Best Fit Model": model_info["model"],
-            #"Prediction Values": ", ".join(map(str, results.get(model_info["country"], {}).get(model_info["predictions"], {}).get(model_info["model"], [])))  # Format predictions as a comma-separated string
-            #"Prediction Values": ", ".join(model_info['predictions'])
-            "Prediction Values": ", ".join(map(str, model_info.get('predictions', [])))
+            "Country": country if i == 0 else "",
+            "Best Fit Model for Life LOB": model_info["model"] if i == 0 else "",
+            "Year / Quarter": quarters[i],
+            "Prediction Values": model_info.get('predictions', [])[i]
+            #"Prediction Values": "<br>".join([f"{q}: {p}" for q, p in zip(quarters, map(str, model_info.get('predictions', [])))])
+              #join()
         }
         for country, model_info in best_models.items()
+        for i in range(len(quarters))
     ]
     df = pd.DataFrame(data)
 
+    # # Filter the DataFrame by the selected countries (multi-select support)
+    # if selected_countries:  # Check if any countries are selected
+    #     df = df[df["Country"].isin(selected_countries)]
+
+    # # Filter the DataFrame by the selected country if a country is selected
+    # if selected_country:
+    #     df = df[df["Country"] == selected_country]
+
     # Convert the DataFrame to a downloadable CSV
     return dcc.send_data_frame(df.to_csv, "Best Fit Models With Prediction Values for Life LOB.csv", index=False)
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
