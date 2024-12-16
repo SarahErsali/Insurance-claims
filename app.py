@@ -566,254 +566,383 @@ def download_table(n_clicks):
 # -------------- Callback for Back Testing -------------------------
 
 @app.callback(
-    [Output("accuracy-chart", "figure"),
-     Output("bias-chart", "figure")],
-    [Input("country-dropdown", "value"),
-     Input("model-dropdown", "value")]
+    [
+        Output("accuracy-chart", "figure"),
+        Output("bias-chart", "figure"),
+        Output("summary-table", "data")  # Update the table data dynamically
+    ],
+    [
+        Input("country-dropdown", "value"),
+        Input("model-dropdown", "value")
+    ]
 )
 def update_backtesting_charts(selected_country, selected_model):
-    #print(f"Callback triggered with Country: {selected_country}, Model: {selected_model}")
+    # Check for invalid inputs
     if results is None or selected_country is None or selected_model is None:
         no_data_msg = html.Div("No data available. Please select valid options.", style={"color": "red"})
-        return no_data_msg, no_data_msg
+        return {}, {}, []
 
     # Retrieve backtesting results
     backtesting_results = results.get("backtesting_results", {})
     country_data = backtesting_results.get(selected_country, {})
-    # backtesting_results = results["backtesting_results"]
-    # country_data = backtesting_results[selected_country]
-
-    #print(f'TEST {country_data}')
     model_data = country_data.get("metrics", {}).get(selected_model, {})
-    #print(f"Selected Country: {selected_country}")
-    #print(f"Selected Model: {selected_model}")
-    #print(f"Model data keys: {list(model_data.keys())}")
-    #print(f'Model data content {model_data}')
-    
+
+    # Filter the summary data for the table
+    best_models = results.get("best_models", {})
+    summary_data = [
+        {
+            "Country": country,
+            "Best Fit Model for Life LOB": model_info["model"]
+        }
+        for country, model_info in best_models.items()
+        if country == selected_country  # Filter by selected country
+    ]
+
     if not model_data:
-        no_data_msg = html.Div(f"No data available for {selected_country} and {selected_model}.", style={"color": "red"})
-        return no_data_msg, no_data_msg
+        return {}, {}, summary_data  # Return filtered table data even if charts are empty
 
-    # # Transforming the dictionary into accuracy and bias data
-    # accuracy_based_dict = {}
-    # bias_based_dict = {}
-
-    # try:
-    #     for cycle, details in model_data.items():
-    #         for metric in details['metrics']:
-    #             lag = metric['lag']
-    #             accuracy = metric['accuracy']
-    #             bias = metric['bias']
-    #             lag_key = f"Lag {lag}"
-                
-    #             # Update accuracy-based dictionary
-    #             if lag_key not in accuracy_based_dict:
-    #                 accuracy_based_dict[lag_key] = {}
-    #             accuracy_based_dict[lag_key][cycle] = accuracy
-
-    #             # Update bias-based dictionary
-    #             if lag_key not in bias_based_dict:
-    #                 bias_based_dict[lag_key] = {}
-    #             bias_based_dict[lag_key][cycle] = bias
-    # except Exception as e:
-    #     print(f"Error processing data for plotting: {e}")
-    #     error_msg = html.Div("Error processing data. Please check your dataset.", style={"color": "red"})
-    #     return error_msg, error_msg
-    
-    # # Chart 1: Accuracy per Lag
-    # fig_accuracy = go.Figure()
-    # for lag, cycles in accuracy_based_dict.items():
-    #     try:
-    #         fig_accuracy.add_trace(go.Bar(
-    #             x=list(cycles.keys()),
-    #             y=list(cycles.values()),
-    #             name=lag
-    #         ))
-    #     except Exception as e:
-    #         print(f"Error plotting accuracy for {lag}: {e}")
-
-    # fig_accuracy.update_layout(
-    #     title=f"Accuracy per Lag per Cycle for {selected_model} in {selected_country}",
-    #     barmode='group',
-    #     yaxis_title="Value (%)",
-    #     legend_title="Lag",
-    #     height=500,
-    #     width=800,
-    #     xaxis=dict(showgrid=False),
-    #     yaxis=dict(showgrid=False),
-    #     plot_bgcolor="white",
-    #     showlegend=True
-    # )
-
-    # # Chart 2: Bias per Lag
-    # fig_bias = go.Figure()
-    # for lag, cycles in bias_based_dict.items():
-    #     try:
-    #         fig_bias.add_trace(go.Bar(
-    #             x=list(cycles.keys()),
-    #             y=list(cycles.values()),
-    #             name=lag
-    #         ))
-    #     except Exception as e:
-    #         print(f"Error plotting bias for {lag}: {e}")
-
-    # fig_bias.update_layout(
-    #     title=f"Bias per Lag per Cycle for {selected_model} in {selected_country}",
-    #     barmode='group',
-    #     yaxis_title="Value (%)",
-    #     legend_title="Lag",
-    #     height=500,
-    #     width=800,
-    #     xaxis=dict(showgrid=False),
-    #     yaxis=dict(showgrid=False),
-    #     plot_bgcolor="white",
-    #     showlegend=True
-    # )
-
-    
-    # Transforming the dictionary
+    # Process Accuracy Data
     accuracy_based_dict = {}
-
     for cycle, details in model_data.items():
-        for metric in details['metrics']:
-            lag = metric['lag']
-            accuracy = metric['accuracy']
-            lag_key= f"lag {lag}"
+        for metric in details["metrics"]:
+            lag = metric["lag"]
+            accuracy = metric["accuracy"]
+            lag_key = f"lag {lag}"
             if lag_key not in accuracy_based_dict:
                 accuracy_based_dict[lag_key] = {}
             accuracy_based_dict[lag_key][cycle] = accuracy
 
-    #print("testing accuracy", accuracy_based_dict)
-
+    # Process Bias Data
     bias_based_dict = {}
-
     for cycle, details in model_data.items():
-        for metric in details['metrics']:
-            lag = metric['lag']
-            bias = metric['bias']
+        for metric in details["metrics"]:
+            lag = metric["lag"]
+            bias = metric["bias"]
             lag_key = f"lag {lag}"
             if lag_key not in bias_based_dict:
                 bias_based_dict[lag_key] = {}
             bias_based_dict[lag_key][cycle] = bias
 
-    #print("testing bias", bias_based_dict)
-    #print("testing type", type(accuracy_based_dict.values()))
-
-    # Chart 1: Metrics across cycles
+    # Create Accuracy Chart
     fig_accuracy = go.Figure()
-    for cycle in accuracy_based_dict["lag 1"].keys():
-        try:
-            y_values = [accuracy_based_dict[lag][cycle] for lag in accuracy_based_dict.keys()] #list(accuracy_based_dict[lag].values())
-            fig_accuracy.add_trace(go.Bar(
-                x=list(accuracy_based_dict.keys()),
-                y=y_values,
-                name= f"{cycle.capitalize()}", 
-                marker=dict(line=dict(width=1)),  # Adjust the outline of the bar
-                width=0.2  # Set the bar width 
-            ))
-            print(f"Y-axis values for {cycle}: {y_values}")
-        except Exception as e:
-            print(f"Error plotting metric {cycle}: {e}")
-
-    
+    for cycle in accuracy_based_dict.get("lag 1", {}).keys():
+        y_values = [accuracy_based_dict[lag][cycle] for lag in accuracy_based_dict.keys()]
+        fig_accuracy.add_trace(go.Bar(
+            x=list(accuracy_based_dict.keys()),
+            y=y_values,
+            name=f"{cycle.capitalize()}",
+            marker=dict(line=dict(width=1)),
+            width=0.2
+        ))
 
     fig_accuracy.update_layout(
         title=f"Accuracy per Lag per Cycle for {selected_model} in {selected_country}",
-        barmode='group',
-        bargap=0.4,       # space between bar groups (subplots)
-        bargroupgap=0.1,  # space between bars within the same group
+        barmode="group",
+        bargap=0.4,
+        bargroupgap=0.1,
         yaxis_title="Accuracy (%)",
-        #legend_title="Metrics",
         height=500,
         width=1000,
-        xaxis=dict(showgrid=False, showline=True),
-        yaxis=dict(showgrid=False),
         plot_bgcolor="white",
-        showlegend=True
+        showlegend=True,
     )
 
-    # Chart 2: Bias and Accuracy across lags
+    # Create Bias Chart
     fig_bias = go.Figure()
-    try:
-        
-        for cycle in bias_based_dict["lag 1"].keys():
-            y_values = [bias_based_dict[lag][cycle] for lag in bias_based_dict.keys()]
-            fig_bias.add_trace(go.Bar(
-                x= list(bias_based_dict.keys()),
-                y=y_values,
-                name= f"{cycle.capitalize()}", 
-                marker=dict(line=dict(width=1)),  # Adjust the outline of the bar
-                width=0.2  # Set the bar width 
-            ))
-            print(f"Lag-based Y-values for {cycle}: {y_values}")
-    except Exception as e:
-        print(f"Error plotting lags: {e}")
-
-    #print(f"X-Axis: {list(bias_based_dict.keys())}")
-    #print(f"Y-Axis: {list(bias_based_dict.values())}")
+    for cycle in bias_based_dict.get("lag 1", {}).keys():
+        y_values = [bias_based_dict[lag][cycle] for lag in bias_based_dict.keys()]
+        fig_bias.add_trace(go.Bar(
+            x=list(bias_based_dict.keys()),
+            y=y_values,
+            name=f"{cycle.capitalize()}",
+            marker=dict(line=dict(width=1)),
+            width=0.2
+        ))
 
     fig_bias.update_layout(
         title=f"Bias per Lag per Cycle for {selected_model} in {selected_country}",
-        barmode='group',
-        bargap=0.4,       # space between bar groups (subplots)
-        bargroupgap=0.1,  # space between bars within the same group
+        barmode="group",
+        bargap=0.4,
+        bargroupgap=0.1,
         yaxis_title="Bias (%)",
-        #legend_title="Metrics",
         height=500,
         width=1000,
-        xaxis=dict(showgrid=False, showline=True),
-        yaxis=dict(showgrid=False),
         plot_bgcolor="white",
-        showlegend=True
+        showlegend=True,
     )
-    #print(f"Returning: {fig_accuracy}, {fig_bias}")
-    # Return both figures
-    #return dcc.Graph(figure=fig_accuracy), dcc.Graph(figure=fig_bias)
-    return fig_accuracy, fig_bias
+
+    # Return the updated figures and filtered table data
+    return fig_accuracy, fig_bias, summary_data
+
 
 # @app.callback(
-#     Output("backtesting-chart-container", "children"),
+#     [Output("accuracy-chart", "figure"),
+#      Output("bias-chart", "figure"),
+#      Output("summary-table", "data")],
 #     [Input("country-dropdown", "value"),
 #      Input("model-dropdown", "value")]
 # )
-# def update_backtesting_chart(selected_country, selected_model):
+# def update_backtesting_charts(selected_country, selected_model):
+#     #print(f"Callback triggered with Country: {selected_country}, Model: {selected_model}")
 #     if results is None or selected_country is None or selected_model is None:
-#         return html.Div("No data available. Please select valid options.", style={"color": "red"})
+#         no_data_msg = html.Div("No data available. Please select valid options.", style={"color": "red"})
+#         return no_data_msg, no_data_msg, []
 
+#     # Retrieve backtesting results
 #     backtesting_results = results.get("backtesting_results", {})
 #     country_data = backtesting_results.get(selected_country, {})
-#     model_data = country_data.get(selected_model, {})
 
-#     # Ensure valid data is available
+#     #print(f'TEST {country_data}')
+#     model_data = country_data.get("metrics", {}).get(selected_model, {})
+#     #print(f"Selected Country: {selected_country}")
+#     #print(f"Selected Model: {selected_model}")
+#     #print(f"Model data keys: {list(model_data.keys())}")
+#     #print(f'Model data content {model_data}')
+    
 #     if not model_data:
-#         return html.Div(f"No data available for {selected_country} and {selected_model}.", style={"color": "red"})
+#         no_data_msg = html.Div(f"No data available for {selected_country} and {selected_model}.", style={"color": "red"})
+#         return no_data_msg, no_data_msg, []
 
-#     # Create the figure
-#     fig = go.Figure()
-#     for metric in ["bias", "accuracy", "mape"]:
-#         fig.add_trace(go.Bar(
-#             x=[f"Cycle {i + 1}" for i in range(len(model_data[metric]))],
-#             y=model_data[metric],
-#             name=metric.capitalize(),
-#             # text=model_data[metric],
-#             # textposition='auto'
-#         ))
+       
+#     # Transforming the dictionary
+#     accuracy_based_dict = {}
 
-#     # Update layout for the figure
-#     fig.update_layout(
-#         title=f"Backtesting Metrics for {selected_model} in {selected_country}",
+#     for cycle, details in model_data.items():
+#         for metric in details['metrics']:
+#             lag = metric['lag']
+#             accuracy = metric['accuracy']
+#             lag_key= f"lag {lag}"
+#             if lag_key not in accuracy_based_dict:
+#                 accuracy_based_dict[lag_key] = {}
+#             accuracy_based_dict[lag_key][cycle] = accuracy
+
+#     #print("testing accuracy", accuracy_based_dict)
+
+#     bias_based_dict = {}
+
+#     for cycle, details in model_data.items():
+#         for metric in details['metrics']:
+#             lag = metric['lag']
+#             bias = metric['bias']
+#             lag_key = f"lag {lag}"
+#             if lag_key not in bias_based_dict:
+#                 bias_based_dict[lag_key] = {}
+#             bias_based_dict[lag_key][cycle] = bias
+
+#     #print("testing bias", bias_based_dict)
+#     #print("testing type", type(accuracy_based_dict.values()))
+
+#     best_models = results.get("best_models", {})
+#     summary_data = [
+#         {
+#             "Country": country,
+#             "Best Fit Model for Life LOB": model_info["model"]
+#         }
+#         for country, model_info in best_models.items()
+#     ]
+
+#     # Chart 1: Metrics across cycles
+#     fig_accuracy = go.Figure()
+#     for cycle in accuracy_based_dict["lag 1"].keys():
+#         try:
+#             y_values = [accuracy_based_dict[lag][cycle] for lag in accuracy_based_dict.keys()] #list(accuracy_based_dict[lag].values())
+#             fig_accuracy.add_trace(go.Bar(
+#                 x=list(accuracy_based_dict.keys()),
+#                 y=y_values,
+#                 name= f"{cycle.capitalize()}", 
+#                 marker=dict(line=dict(width=1)),  # Adjust the outline of the bar
+#                 width=0.2  # Set the bar width 
+#             ))
+#             print(f"Y-axis values for {cycle}: {y_values}")
+#         except Exception as e:
+#             print(f"Error plotting metric {cycle}: {e}")
+
+    
+
+#     fig_accuracy.update_layout(
+#         title=f"Accuracy per Lag per Cycle for {selected_model} in {selected_country}",
 #         barmode='group',
-#         #xaxis_title="Cycles",
-#         yaxis_title="Value (%)",
-#         legend_title="Metrics",
+#         bargap=0.4,       # space between bar groups (subplots)
+#         bargroupgap=0.1,  # space between bars within the same group
+#         yaxis_title="Accuracy (%)",
+#         #legend_title="Metrics",
 #         height=500,
-#         width=800,
-#         xaxis=dict(showgrid=False),  # Remove x-axis gridlines
-#         yaxis=dict(showgrid=False),  # Remove y-axis gridlines
-#         plot_bgcolor="white",       # Set plot background to white
+#         width=1000,
+#         xaxis=dict(showgrid=False, showline=True),
+#         yaxis=dict(showgrid=False),
+#         plot_bgcolor="white",
+#         showlegend=True
 #     )
 
-#     return dcc.Graph(figure=fig)
+#     # Chart 2: Bias and Accuracy across lags
+#     fig_bias = go.Figure()
+#     try:
+        
+#         for cycle in bias_based_dict["lag 1"].keys():
+#             y_values = [bias_based_dict[lag][cycle] for lag in bias_based_dict.keys()]
+#             fig_bias.add_trace(go.Bar(
+#                 x= list(bias_based_dict.keys()),
+#                 y=y_values,
+#                 name= f"{cycle.capitalize()}", 
+#                 marker=dict(line=dict(width=1)),  # Adjust the outline of the bar
+#                 width=0.2  # Set the bar width 
+#             ))
+#             print(f"Lag-based Y-values for {cycle}: {y_values}")
+#     except Exception as e:
+#         print(f"Error plotting lags: {e}")
+
+#     #print(f"X-Axis: {list(bias_based_dict.keys())}")
+#     #print(f"Y-Axis: {list(bias_based_dict.values())}")
+
+#     fig_bias.update_layout(
+#         title=f"Bias per Lag per Cycle for {selected_model} in {selected_country}",
+#         barmode='group',
+#         bargap=0.4,       # space between bar groups (subplots)
+#         bargroupgap=0.1,  # space between bars within the same group
+#         yaxis_title="Bias (%)",
+#         #legend_title="Metrics",
+#         height=500,
+#         width=1000,
+#         xaxis=dict(showgrid=False, showline=True),
+#         yaxis=dict(showgrid=False),
+#         plot_bgcolor="white",
+#         showlegend=True
+#     )
+#     #print(f"Returning: {fig_accuracy}, {fig_bias}")
+    
+#     return fig_accuracy, fig_bias, summary_data
+
+
+# @app.callback(
+#     [Output("accuracy-chart", "figure"),
+#      Output("bias-chart", "figure")],
+#     [Input("country-dropdown", "value"),
+#      Input("model-dropdown", "value")]
+# )
+# def update_backtesting_charts(selected_country, selected_model):
+#     #print(f"Callback triggered with Country: {selected_country}, Model: {selected_model}")
+#     if results is None or selected_country is None or selected_model is None:
+#         no_data_msg = html.Div("No data available. Please select valid options.", style={"color": "red"})
+#         return no_data_msg, no_data_msg
+
+#     # Retrieve backtesting results
+#     backtesting_results = results.get("backtesting_results", {})
+#     country_data = backtesting_results.get(selected_country, {})
+#     # backtesting_results = results["backtesting_results"]
+#     # country_data = backtesting_results[selected_country]
+
+#     #print(f'TEST {country_data}')
+#     model_data = country_data.get("metrics", {}).get(selected_model, {})
+#     #print(f"Selected Country: {selected_country}")
+#     #print(f"Selected Model: {selected_model}")
+#     #print(f"Model data keys: {list(model_data.keys())}")
+#     #print(f'Model data content {model_data}')
+    
+#     if not model_data:
+#         no_data_msg = html.Div(f"No data available for {selected_country} and {selected_model}.", style={"color": "red"})
+#         return no_data_msg, no_data_msg
+
+       
+#     # Transforming the dictionary
+#     accuracy_based_dict = {}
+
+#     for cycle, details in model_data.items():
+#         for metric in details['metrics']:
+#             lag = metric['lag']
+#             accuracy = metric['accuracy']
+#             lag_key= f"lag {lag}"
+#             if lag_key not in accuracy_based_dict:
+#                 accuracy_based_dict[lag_key] = {}
+#             accuracy_based_dict[lag_key][cycle] = accuracy
+
+#     #print("testing accuracy", accuracy_based_dict)
+
+#     bias_based_dict = {}
+
+#     for cycle, details in model_data.items():
+#         for metric in details['metrics']:
+#             lag = metric['lag']
+#             bias = metric['bias']
+#             lag_key = f"lag {lag}"
+#             if lag_key not in bias_based_dict:
+#                 bias_based_dict[lag_key] = {}
+#             bias_based_dict[lag_key][cycle] = bias
+
+#     #print("testing bias", bias_based_dict)
+#     #print("testing type", type(accuracy_based_dict.values()))
+
+#     # Chart 1: Metrics across cycles
+#     fig_accuracy = go.Figure()
+#     for cycle in accuracy_based_dict["lag 1"].keys():
+#         try:
+#             y_values = [accuracy_based_dict[lag][cycle] for lag in accuracy_based_dict.keys()] #list(accuracy_based_dict[lag].values())
+#             fig_accuracy.add_trace(go.Bar(
+#                 x=list(accuracy_based_dict.keys()),
+#                 y=y_values,
+#                 name= f"{cycle.capitalize()}", 
+#                 marker=dict(line=dict(width=1)),  # Adjust the outline of the bar
+#                 width=0.2  # Set the bar width 
+#             ))
+#             print(f"Y-axis values for {cycle}: {y_values}")
+#         except Exception as e:
+#             print(f"Error plotting metric {cycle}: {e}")
+
+    
+
+#     fig_accuracy.update_layout(
+#         title=f"Accuracy per Lag per Cycle for {selected_model} in {selected_country}",
+#         barmode='group',
+#         bargap=0.4,       # space between bar groups (subplots)
+#         bargroupgap=0.1,  # space between bars within the same group
+#         yaxis_title="Accuracy (%)",
+#         #legend_title="Metrics",
+#         height=500,
+#         width=1000,
+#         xaxis=dict(showgrid=False, showline=True),
+#         yaxis=dict(showgrid=False),
+#         plot_bgcolor="white",
+#         showlegend=True
+#     )
+
+#     # Chart 2: Bias and Accuracy across lags
+#     fig_bias = go.Figure()
+#     try:
+        
+#         for cycle in bias_based_dict["lag 1"].keys():
+#             y_values = [bias_based_dict[lag][cycle] for lag in bias_based_dict.keys()]
+#             fig_bias.add_trace(go.Bar(
+#                 x= list(bias_based_dict.keys()),
+#                 y=y_values,
+#                 name= f"{cycle.capitalize()}", 
+#                 marker=dict(line=dict(width=1)),  # Adjust the outline of the bar
+#                 width=0.2  # Set the bar width 
+#             ))
+#             print(f"Lag-based Y-values for {cycle}: {y_values}")
+#     except Exception as e:
+#         print(f"Error plotting lags: {e}")
+
+#     #print(f"X-Axis: {list(bias_based_dict.keys())}")
+#     #print(f"Y-Axis: {list(bias_based_dict.values())}")
+
+#     fig_bias.update_layout(
+#         title=f"Bias per Lag per Cycle for {selected_model} in {selected_country}",
+#         barmode='group',
+#         bargap=0.4,       # space between bar groups (subplots)
+#         bargroupgap=0.1,  # space between bars within the same group
+#         yaxis_title="Bias (%)",
+#         #legend_title="Metrics",
+#         height=500,
+#         width=1000,
+#         xaxis=dict(showgrid=False, showline=True),
+#         yaxis=dict(showgrid=False),
+#         plot_bgcolor="white",
+#         showlegend=True
+#     )
+#     #print(f"Returning: {fig_accuracy}, {fig_bias}")
+    
+#     return fig_accuracy, fig_bias
+
+
 
 
 

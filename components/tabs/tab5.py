@@ -65,14 +65,15 @@ def generate_best_model_table(results):
         # Right Container
         html.Div([
             html.P(
-                "Below is the summary of the best-performing models, including relevant prediction values, "
-                "selected for each country. These models were evaluated and chosen based on their ability to "
+                "Presented below is a comprehensive summary of the best-performing models, showcasing the relevant prediction values for each year and quarter, selected for each country. "
+                "These models were evaluated and chosen based on their ability to "
                 "provide accurate predictions for the dataset.",
                 style={
                     "lineHeight": "1.8",
-                    "marginBottom": "20px",
+                    "marginTop": "30px",
+                    "marginBottom": "40px",
                     "textAlign": "justify",
-                    "fontSize": "16px"
+                    "fontSize": "18px"
                 }
             ),
             dash_table.DataTable(
@@ -90,16 +91,16 @@ def generate_best_model_table(results):
                     "padding": "8px",
                     "fontFamily": "Arial",
                     "fontSize": "14px",
-                    "borderLeft": "3px solid black",  # Set thick vertical borders on the left
-                    "borderRight": "3px solid black",  # Set thick vertical borders on the right
+                    "borderLeft": "2.5px solid black",  # Set thick vertical borders on the left
+                    "borderRight": "2px solid black",  # Set thick vertical borders on the right
                 },
                 style_header={
                     "backgroundColor": "rgb(230, 230, 230)",
                     "fontWeight": "bold",
-                    "borderLeft": "3px solid black",  # Match vertical border thickness for header
-                    "borderRight": "3px solid black",  # Match vertical border thickness for header
-                    "borderTop": "3px solid black",   # Add a thick top border for the header row
-                    "borderBottom": "3px solid black",  # Add a thick bottom border for the header row
+                    "borderLeft": "2.5px solid black",  # Match vertical border thickness for header
+                    "borderRight": "2px solid black",  # Match vertical border thickness for header
+                    "borderTop": "2px solid black",   # Add a thick top border for the header row
+                    "borderBottom": "2px solid black",  # Add a thick bottom border for the header row
                 },
                 merge_duplicate_headers=True,  # Optional: To group headers for a cleaner look
                 style_data_conditional=[
