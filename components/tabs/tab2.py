@@ -20,13 +20,12 @@ def render_tab2(results):
     """
     backtesting_results = results.get("backtesting_results", {})
     countries = list(backtesting_results.keys())
+
     # Predefined list of features for plotting
     features = [
         'NET Premiums Written',
         'NET Premiums Earned',
         'NET Claims Incurred'
-        #'Expenses Incurred',
-        #'Total Technical Expenses'
     ]
 
     # Default values
@@ -51,18 +50,17 @@ def render_tab2(results):
                             ),
                             dcc.Dropdown(
                                 id='country-dropdown',
-                                options=[{'label': country, 'value': country}for country in countries],
-                                value=default_country,  # Set the default country
-                                #placeholder="Select a country",  # Optional placeholder
+                                options=[{'label': country, 'value': country} for country in countries],
+                                value=default_country,
                                 style={
                                     'width': '300px',
                                     'marginBottom': '20px',
-                                    'fontSize': '14px',  # Adjust font size for consistency
-                                    'padding': '8px',  # Add padding for dropdown
+                                    'fontSize': '14px',
+                                    'padding': '8px',
                                 }
                             ),
                         ],
-                        style={'textAlign': 'left'}  # Ensure left alignment for the container
+                        style={'textAlign': 'left'}
                     ),
 
                     # Dropdown for feature selection
@@ -79,42 +77,59 @@ def render_tab2(results):
                             dcc.Dropdown(
                                 id='feature-dropdown',
                                 options=[{'label': feature, 'value': feature} for feature in features],
-                                value=default_feature,  # Set the default feature
-                                #placeholder="Select a feature",  # Optional placeholder
+                                value=default_feature,
                                 style={
                                     'width': '300px',
-                                    'fontSize': '14px',  # Adjust font size for consistency
-                                    'padding': '8px',  # Add padding for dropdown
+                                    'fontSize': '14px',
+                                    'padding': '8px',
                                 }
                             ),
                         ],
-                        style={'textAlign': 'left'}  # Ensure left alignment for the container
+                        style={'textAlign': 'left'}
                     ),
                 ],
                 style={
-                    'width': '25%',  # Adjust width of dropdown container
+                    'width': '25%',
                     'padding': '20px',
-                    'boxShadow': '0 0 10px rgba(0,0,0,0.1)',  # Add light shadow for dropdown container
+                    'boxShadow': '0 0 10px rgba(0,0,0,0.1)',
                     'display': 'flex',
                     'flexDirection': 'column',
-                    'alignItems': 'flex-start',  # Align everything to the left
-                    'backgroundColor': 'white',  # Ensure white background for the dropdown section
-                    'borderRadius': '10px',  # Optional: Rounded corners for dropdown container
-                    'marginRight': '20px',  # Add spacing between dropdown and graph
+                    'alignItems': 'flex-start',
+                    'backgroundColor': 'white',
+                    'borderRadius': '10px',
+                    'marginRight': '20px',
                 }
             ),
 
             # Graph container (right side)
             html.Div(
-                dcc.Graph(
-                    id='feature-plot',
-                ),
+                [
+                    # Descriptive Text
+                    html.P(
+                        "The following plot provides a visualization of key financial metrics: Net Premiums Written, Net Premiums Incurred, and Net Claims Incurred. "
+                        "These metrics are presented for the quarterly preprocessed data of the uploaded countries. "
+                        "Explore the data to identify trends, patterns, and seasonality across different countries and time periods.",
+                        style={
+                            'fontSize': '18px',
+                            'lineHeight': '1.8',
+                            "marginTop": "30px",
+                            'marginBottom': '40px',
+                            'textAlign': 'justify',
+                        }
+                    ),
+                    # Plot
+                    dcc.Graph(
+                        id='feature-plot',
+                    )
+                ],
                 style={
-                    'width': '75%',  # Adjust width of the graph container
+                    'width': '75%',
                     'padding': '20px',
-                    'backgroundColor': 'white',  # White background for the graph
-                    'borderRadius': '10px',  # Optional: Rounded corners for better aesthetics
-                    'boxShadow': '0 0 10px rgba(0, 0, 0, 0.1)',  # Add shadow for the graph container
+                    'backgroundColor': 'white',
+                    'borderRadius': '10px',
+                    'boxShadow': '0 0 10px rgba(0, 0, 0, 0.1)',
+                    'overflowY': 'auto',  # Enable vertical scrolling
+                    'maxHeight': '95vh',  # Limit the height of the container
                 }
             ),
         ],
@@ -122,7 +137,8 @@ def render_tab2(results):
             'display': 'flex',
             'flexDirection': 'row',
             'height': '100vh',
-            'backgroundColor': 'white',  # Set entire page background to white
-            'padding': '20px',  # Add padding around the entire layout
+            'backgroundColor': 'white',
+            'padding': '20px',
         }
     )
+

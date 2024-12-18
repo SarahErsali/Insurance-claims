@@ -18,7 +18,6 @@ def generate_backtesting_charts(results):
     countries = list(backtesting_results.keys())
     models = list(next(iter(backtesting_results.values())).get("metrics", {}).keys()) if countries else []
 
-    #-------
     # Extract summary data for the table
     best_models = results.get("best_models", {})
     summary_data = [
@@ -33,8 +32,8 @@ def generate_backtesting_charts(results):
             {"name": "Country", "id": "Country"},
             {"name": "Best Fit Model for Life LOB", "id": "Best Fit Model for Life LOB"},
         ],
-        data=summary_data,  # Pre-populate with summary data
-        style_table={"width": "100%", "marginBottom": "20px"},  # Full width and spacing below the table
+        data=summary_data,
+        style_table={"width": "100%", "marginBottom": "20px"},
         style_cell={
             "textAlign": "center",
             "padding": "8px",
@@ -47,130 +46,98 @@ def generate_backtesting_charts(results):
         },
     )
 
-    
-    #-----
-
     # Layout
     return html.Div(
         [
             # Left-side container for table and dropdowns
             html.Div(
                 [
-                    # Add the summary table
-                    html.Div(summary_table, style={"marginTop": "30px", "marginBottom": "30px", "marginLeft": "auto", "marginRight": "auto", "textAlign": "center", "width": "90%",}),
+                    html.Div(summary_table, style={"marginTop": "30px", "marginBottom": "30px", "width": "90%"}),
 
                     # Dropdown for selecting country
                     html.Div(
                         [
-                            html.Label(
-                                "Select Country:",
-                                style={
-                                    "fontSize": "18px",
-                                    "fontWeight": "bold",
-                                    "lineHeight": "2",
-                                    "textAlign": "left",
-                                    "marginBottom": "10px",
-                                }
-                            ),
+                            html.Label("Select Country:", style={"fontSize": "18px", "fontWeight": "bold"}),
                             dcc.Dropdown(
                                 id="country-dropdown",
                                 options=[{"label": country, "value": country} for country in countries],
                                 value=countries[0] if countries else None,
                                 placeholder="Select a country",
-                                style={
-                                    "width": "160%",
-                                    "fontSize": "14px",
-                                    "padding": "8px",
-                                    "height": "50px",
-                                    "textAlign": "left",
-                                }
+                                style={"width": "160%", "fontSize": "14px", "padding": "8px", "height": "50px"},
                             ),
                         ],
-                        style={"marginBottom": "30px"}
+                        style={"marginBottom": "30px", 'textAlign': 'left'}
                     ),
 
                     # Dropdown for selecting model
                     html.Div(
                         [
-                            html.Label(
-                                "Select Model:",
-                                style={
-                                    "fontSize": "18px",
-                                    "fontWeight": "bold",
-                                    "lineHeight": "2",
-                                    "textAlign": "left",
-                                    "marginBottom": "10px",
-                                }
-                            ),
+                            html.Label("Select Model:", style={"fontSize": "18px", "fontWeight": "bold"}),
                             dcc.Dropdown(
                                 id="model-dropdown",
                                 options=[{"label": model, "value": model} for model in models],
                                 value=models[0] if models else None,
                                 placeholder="Select a model",
-                                style={
-                                    "width": "167%",
-                                    "fontSize": "14px",
-                                    "padding": "14px",
-                                    "height": "50px",
-                                    "textAlign": "left",
-                                }
+                                style={"width": "167%", "fontSize": "14px", "padding": "14px", "height": "50px"},
                             ),
                         ],
-                        style={"marginBottom": "30px"}
+                        style={"marginBottom": "30px", 'textAlign': 'left'}
                     ),
                 ],
                 style={
                     "width": "27%",
                     "padding": "20px",
-                    "boxShadow": "0 0 10px rgba(0,0,0,0.1)",  # Add shadow
-                    "borderRadius": "10px",  # Add rounded corners
-                    "backgroundColor": "white",  # Ensure white background
+                    "boxShadow": "0 0 10px rgba(0,0,0,0.1)",
+                    "borderRadius": "10px",
+                    "backgroundColor": "white",
                     "display": "flex",
                     "flexDirection": "column",
-                    "alignItems": "flex-start",  # Align everything to the left
-                    "height": "95vh",  # Increased height to fit both plots
+                    "alignItems": "flex-start",
+                    "height": "95vh",
                 }
             ),
 
             # Right-side container for the plots
             html.Div(
                 [
+                    # Enhanced descriptive text
+                    html.P(
+                        "To evaluate the models, a backtesting methodology is applied to each retrained model. The performance is assessed over three cycles, with relevant metrics such as Accuracy and Bias calculated for each cycle and future lag. This comprehensive overview allows for a detailed comparison of model performance across different time horizons. Additionally, the table at the top of the left panel highlights the best-fit model for each country, selected based on the highest Accuracy and lowest Bias across the cycles.",
+                        style={
+                            "fontSize": "18px",
+                            "lineHeight": "1.8",
+                            "marginTop": "30px",
+                            "marginBottom": "30px",
+                            "textAlign": "justify",
+                        },
+                    ),
                     # Container for the accuracy chart
                     html.Div(
-                        dcc.Graph(
-                            id="accuracy-chart",
-                            config={"displayModeBar": True},
-                            style={
-                                "width": "100%",  
-                                "height": "40vh",  # Set a fixed height
-                            }
-                        ),
-                        style={"marginBottom": "250px"}  # Explicit spacing for this chart
+                        dcc.Graph(id="accuracy-chart", config={"displayModeBar": True}),
+                        style={"marginBottom": "20px"}
                     ),
                     # Container for the bias chart
                     html.Div(
-                        dcc.Graph(
-                            id="bias-chart",
-                            config={"displayModeBar": True},
-                            style={
-                                "width": "100%",  
-                                "height": "40vh",  # Set a fixed height
-                            }
-                        )
+                        dcc.Graph(id="bias-chart", config={"displayModeBar": True}),
+                        style={"marginBottom": "20px"}
+                    ),
+                    # New plot added here
+                    html.Div(
+                        dcc.Graph(id="new-plot", config={"displayModeBar": True}),
+                        style={"width": "100%", "height": "40vh"}
                     ),
                 ],
                 style={
-                    "width": "75%",  # Adjust width of the plot container
+                    "width": "75%",
                     "padding": "20px",
-                    "boxShadow": "0 0 10px rgba(0,0,0,0.1)",  # Add shadow around the entire right container
-                    "borderRadius": "10px",  # Rounded corners for the container
-                    "backgroundColor": "white",  # Ensure white background
+                    "boxShadow": "0 0 10px rgba(0,0,0,0.1)",
+                    "borderRadius": "10px",
+                    "backgroundColor": "white",
                     "display": "flex",
-                    "flexDirection": "column",  # Stack charts vertically
-                    "justifyContent": "flex-start",  # Align charts at the top
-                    "alignItems": "center",  # Center align the charts horizontally
-                    "height": "95vh",  # Increased height to fit both plots
-                    "overflowY": "auto",  # Enable vertical scrolling if necessary
+                    "flexDirection": "column",
+                    "alignItems": "center",
+                    "height": "95vh",
+                    "overflowY": "auto",
                 }
             ),
         ],
@@ -179,8 +146,8 @@ def generate_backtesting_charts(results):
             "flexDirection": "row",
             "height": "100vh",
             "padding": "20px",
-            "gap": "20px",  # Add spacing between the left and right containers
-            "backgroundColor": "#f9f9f9",  # Light gray background for overall layout
+            "gap": "20px",
+            "backgroundColor": "#f9f9f9",
         }
     )
 

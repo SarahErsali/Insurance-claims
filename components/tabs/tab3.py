@@ -19,10 +19,8 @@ def render_tab3():
     Render the layout for Tab 3, allowing users to select a country and model to view comparison graphs.
     """
     # Extract the list of countries from results
-    countries = list(results.get('country_metrics', {}).keys()) if results else []
-    #print("Countries loaded:", countries)
-    #print("Results data structure:", results)
-    
+    countries = list(results.get("country_metrics", {}).keys()) if results else []
+
     # Set the default country to the first one in the list
     default_country = countries[0] if countries else None
 
@@ -41,7 +39,7 @@ def render_tab3():
                             dcc.Dropdown(
                                 id='tab3-country-dropdown',
                                 options=[{'label': country, 'value': country} for country in countries],
-                                value=default_country,  # Set the first country as the default
+                                value=default_country,
                                 style={
                                     'width': '300px',
                                     'marginBottom': '20px',
@@ -72,8 +70,8 @@ def render_tab3():
                                     {'label': 'ARIMA (Blind Test)', 'value': 'ARIMA'},
                                     {'label': 'Moving Average (Blind Test)', 'value': 'Moving Average'}
                                 ],
-                                value='Default XGBoost Validation', # Default value
-                                multi=True,  # Enable multi-selection
+                                value='Default XGBoost Validation',
+                                multi=True,
                                 style={
                                     'width': '300px',
                                     'fontSize': '14px',
@@ -94,17 +92,30 @@ def render_tab3():
                     'backgroundColor': 'white',
                     'borderRadius': '10px',
                     'marginRight': '20px',
-                    'height': '95vh',  # Increased height to fit both plots
+                    'height': '95vh',
                 }
             ),
 
             # Graph container (right side)
             html.Div(
                 [
+                    # Descriptive Text
+                    html.P(
+                        "The plot and bar chart below provide a comprehensive overview of model performance. The analysis compares the default XGBoost and LightGBM models (without hyperparameter tuning) against retrained models optimized using Bayesian methods. Additionally, the performance of time-series models, including tuned ARIMA and Moving Average, is presented. The metrics, Accuracy and Bias, are calculated for each model, offering insights into their predictive capabilities.",
+                        style={
+                            'fontSize': '18px',
+                            'lineHeight': '1.8',
+                            "marginTop": "30px",
+                            'marginBottom': '40px',
+                            'textAlign': 'justify',
+                        }
+                    ),
+                    # First Plot
                     dcc.Graph(
                         id='model-comparison-graph',
                         config={'displayModeBar': True}
                     ),
+                    # Second Plot (Bar Chart)
                     html.Div(
                         dcc.Graph(id='metrics-bar-chart'),
                         style={'marginTop': '20px'}
@@ -116,8 +127,8 @@ def render_tab3():
                     'backgroundColor': 'white',
                     'borderRadius': '10px',
                     'boxShadow': '0 0 10px rgba(0, 0, 0, 0.1)',
-                    'height': '95vh',  # Increased height to fit both plots
-                    'overflowY': 'auto',  # Enable vertical scrolling if necessary
+                    'height': '95vh',
+                    'overflowY': 'auto',
                 }
             ),
         ],
@@ -129,6 +140,7 @@ def render_tab3():
             'padding': '20px',
         }
     )
+
 
 # def render_tab3():
 #     """

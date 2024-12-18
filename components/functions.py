@@ -918,7 +918,7 @@ def evaluate_ma_model_by_country(combined_df, target_column): #, blind_test_star
 # # model_dicts is models
 # # model_types is the dictionary defining each model's type
 
-def run_backtest(model_dicts, model_types, combined_df, target_column, cycles, n_lags):
+def run_backtest(model_dicts, model_types, combined_df, target_column, cycles=3, n_lags=4):
     """
     Run backtesting for all models (ML, ARIMA, MA) on the combined dataset.
 
@@ -988,8 +988,13 @@ def run_backtest(model_dicts, model_types, combined_df, target_column, cycles, n
         #print("before ma", all_cycle_metrics, all_preds)
         all_cycle_metrics, all_preds = ma_backtest_model_by_country(arima_country_data, all_preds, all_cycle_metrics, window=22, cycles=3, n_lags=4)
         #print("after ma", all_cycle_metrics, all_preds)
-        #print(f"Completed backtesting for {country}.")  
-        backtesting_results[country] = {'predictions': all_preds, 'metrics': all_cycle_metrics}
+        #print(f"Completed backtesting for {country}.")
+        #preparing actuals for specific plot
+        a = len(country_data) - n_lags - cycles
+        actual_periods = (country_data['Year'][a:].astype(str) + ' Q' + country_data['Quarter'][a:].astype(str)).tolist()
+        preds_actuals = country_data.iloc[a:][target_column].tolist()
+        print("MEANINGFUL", a, preds_actuals, actual_periods)
+        backtesting_results[country] = {'predictions': all_preds, 'metrics': all_cycle_metrics, 'preds_actuals': preds_actuals, 'actual_periods': actual_periods}
         #print(f'metrics and preds inside , {all_preds}')
 
     #print("Backtesting complete.")
@@ -1071,55 +1076,7 @@ def backtest_model(country_data, y_train_arima, model, model_name, model_type, t
 
                 #print(f"Evaluating model is_ml_model: {is_ml_model}, is_ma_model: {is_ma_model}, is_arima_model: {is_arima_model}")
 
-        # if is_arima_model or is_ma_model:
-        #     window = 25
-
-        # elif is_ma_model:
-        #     #print(f"Back testing training MA model.")  
-        #     try:
-        #         #print(f"MA model type: {type(model)}")
-
-        #         rolling_mean = train_data[target_column].rolling(window=25).mean()
-        #         preds = rolling_mean.iloc[-len(test_data):].tolist()
-        #     except Exception as e:
-        #         print(f"Moving Average prediction failed: {e}")
-        #         preds.append(np.nan)
-
-        # elif is_arima_model:
-        #     #print(f"Back testing training ARIMA model.") 
-        #     try:
-        #         #for country, country_model in model.items():
-        #             #print(f"ARIMA model type: {type(model)}")
-        #         model.fit(train_data[target_column])
-        #         forecast = model.forecast(steps=len(test_data))
-        #         preds = forecast.tolist()
-                    
-        #     except Exception as e:
-        #         print(f"ARIMA prediction failed: {e}")
-        #         preds.append(np.nan)
-
         
-       
-        # Ensure predictions align with test data
-        # if len(preds) != len(b_y_test):
-        #     print(f"Prediction length mismatch: preds={len(preds)}, b_y_test={len(b_y_test)}")  # Debugging statement
-        #     if len(preds) == 0:
-        #         # Handle empty predictions by filling with mean of training set
-        #         print("Warning: Predictions are empty. Filling with mean of training data.")
-        #         train_mean = b_y_train.mean()
-        #         preds = list(np.full(len(b_y_test), train_mean if not np.isnan(train_mean) else 0))
-
-        #     elif len(preds) > len(b_y_test):
-        #         # Truncate predictions to match test set length
-        #         print("Warning: Predictions are longer than test set. Truncating to match length.")
-        #         preds = preds[:len(b_y_test)]
-
-        #     elif len(preds) < len(b_y_test):
-        #         # Extend predictions with the last value to match test set length
-        #         print("Warning: Predictions are shorter than test set. Padding with last prediction value.")
-        #         last_valid_pred = preds[-1] if not np.isnan(preds[-1]) else (np.nanmean(preds) if not np.isnan(np.nanmean(preds)) else 0)
-        #         padding = [last_valid_pred] * (len(b_y_test) - len(preds))
-        #         preds = list(np.append(preds, padding))
 
         # Append predictions for this cycle to the global list
         #print(f"Before appending, preds for cycle {cycle + 1}: {preds}")
@@ -1127,7 +1084,7 @@ def backtest_model(country_data, y_train_arima, model, model_name, model_type, t
             all_preds[model_name] = {}
         all_preds[model_name][f'cycle {cycle + 1}'] = preds #.extend(preds)  # Use `.extend()` to add multiple predictions to the global list
 
-        #print(f"Updated all_preds after Cycle {cycle + 1}: {all_preds}")
+        print(f"Updated all_preds after Cycle {cycle + 1}: {all_preds}")
 
         # Calculate metrics for each lag
         metrics = []
@@ -1856,7 +1813,7 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     #     combined_df, shock_years, shock_quarter, shock_features, shock_magnitude, 
     #     models, retrained_models, target_column, val_start, val_end, blind_test_start, blind_test_end
     # )
-    print("WHAT THE FUCK")
+    #print("WHAT THE FUCK")
     # Select the best model for each country
     results = select_best_model(results, weight_bias=0.4, weight_accuracy=0.4, weight_consistency=0.2)
     #print("Best Model Selection:", results.get("best_models"))
@@ -1864,14 +1821,17 @@ def full_model_evaluation_pipeline(combined_df, shock_years, shock_quarter, shoc
     #print(results.keys())  # Check if 'country_metrics' is part of the keys
 
      # Specify the number of rows to select
-    print("prediction_periods")
-    print("THIS", combined_df['Year'])
-    print("THIS", combined_df['Year'][-n_lags:])
-    print("GO", combined_df['Quarter'])
-    print("GO", combined_df['Quarter'][-n_lags:])
-    # Create a list of the last X elements from two columns concatenated with a space
+    #print("prediction_periods")
+    #print("THIS", combined_df['Year'])
+    #print("THIS", combined_df['Year'][-n_lags:])
+    #print("GO", combined_df['Quarter'])
+    #print("GO", combined_df['Quarter'][-n_lags:])
+
+    # Create a list of the last X elements from two columns concatenated with a space (last tab)
     results["prediction_periods"] = (combined_df['Year'][-n_lags:].astype(str) + ' Q' + combined_df['Quarter'][-n_lags:].astype(str)).tolist()
-    print("prediction_periods", results["prediction_periods"])
+    
+    
+    #print("prediction_periods", results["prediction_periods"])
     # Pretty-print using json.dumps
     #print(json.dumps(results, indent=4))
 
